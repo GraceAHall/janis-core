@@ -9,7 +9,7 @@ from janis_core.ingestion.galaxy.model.workflow import Workflow
 from janis_core.ingestion.galaxy.startup import tool_setup
 from janis_core.ingestion.galaxy.ingest import ingest_tool
 from janis_core.ingestion.galaxy.gx.gxworkflow.parsing.tool_state import load_tool_state
-from janis_core.ingestion.galaxy.gx.wrappers.downloads.wrappers import get_builtin_tool_path
+from janis_core.ingestion.galaxy.gx.wrappers.downloads.main import get_builtin_tool_path
 
 from janis_core.ingestion.galaxy import mapping
 from janis_core.ingestion.galaxy import settings
@@ -22,6 +22,7 @@ def ingest_workflow_tools(janis: Workflow, galaxy: dict[str, Any]) -> None:
             tool = parse_step_tool(j_step.metadata)
             j_step.set_tool(tool)
             g_step['tool_state'] = load_tool_state(g_step)
+            # g_step['tool_state'] = load_tool_state(g_step)
 
 def parse_step_tool(metadata: StepMetadata) -> Tool:
     args = create_tool_settings_for_step(metadata)

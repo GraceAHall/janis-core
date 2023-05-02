@@ -158,8 +158,7 @@ class RedirectOutputUpdater(Updater):
 
 
 class Command:
-    def __init__(self, xmlcmdstr: CommandString):
-        self.xmlcmdstr = xmlcmdstr
+    def __init__(self):
         self.positionals: dict[int, Positional] = {}
         self.flags: dict[str, Flag] = {}
         self.options: dict[str, Option] = {}

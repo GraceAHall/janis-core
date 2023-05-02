@@ -6,10 +6,11 @@ import json
 import xml.etree.ElementTree as et
 
 from janis_core.ingestion.main import ingest_galaxy
-from janis_core.ingestion.galaxy.gx.gxtool.text.simplification.aliases import resolve_aliases
+from janis_core.ingestion.galaxy.gx.gxtool.text.common.aliases import resolve_aliases
 
 from janis_core.ingestion.galaxy.gx.gxworkflow.parsing.tool_state import load_tool_state
-from janis_core.ingestion.galaxy.gx.gxtool.text.cheetah.evaluation import sectional_evaluate
+from janis_core.ingestion.galaxy.gx.gxtool.text import simplify_command
+# from janis_core.ingestion.galaxy.gx.gxtool.text.cheetah.evaluation import sectional_evaluate
 
 from janis_core.ingestion.galaxy import containers
 from janis_core.ingestion.galaxy.gx.gxtool.requirements import CondaRequirement
@@ -18,6 +19,7 @@ from janis_core.ingestion.galaxy import datatypes
 from janis_core.ingestion.galaxy.datatypes.core import file_t, string_t, bool_t
 
 from janis_core import WorkflowBuilder
+from janis_core import Workflow
 from janis_core import WorkflowMetadata
 from janis_core.workflow.workflow import InputNode
 from janis_core.workflow.workflow import OutputNode
@@ -369,6 +371,7 @@ def read_step_inputs(path: str) -> dict[str, Any]:
     step['tool_state'] = load_tool_state(step)
     return step['tool_state']
 
+
 class TestSectionalCheetah(unittest.TestCase):
 
     def test_unicycler(self):
@@ -377,7 +380,7 @@ class TestSectionalCheetah(unittest.TestCase):
         inputs = read_step_inputs(UNICYCLER_INPUTS_PATH)
         templated = sectional_evaluate(vanilla, inputs)
         self.assertEquals(reference, templated)
-
+    
 
 
 
@@ -409,17 +412,32 @@ class TestAliases(unittest.TestCase):
 
 
 class TestFromGalaxy(unittest.TestCase):
-    TOOL_PATH = os.path.abspath('./janis_core/tests/data/galaxy/abricate/abricate.xml')
-    WORKFLOW_PATH = os.path.abspath('./janis_core/tests/data/galaxy/unicycler_assembly.ga')
 
-    def test_ingest_tool(self) -> None:
-        jtool = ingest_galaxy(self.TOOL_PATH)
+    def test_ingest_abricate_tool(self) -> None:
+        filepath = os.path.abspath('./janis_core/tests/data/galaxy/abricate/abricate.xml')
+        jtool = ingest_galaxy(filepath)
+        assert(isinstance(jtool, CommandTool))
+        
         self.assertEquals(len(jtool.inputs()), 5)
         self.assertEquals(len(jtool.outputs()), 1)
         self.assertEquals(jtool.base_command(), ['abricate'])
 
-    def test_ingest_workflow(self) -> None:
-        jworkflow = ingest_galaxy(self.WORKFLOW_PATH)
+    def test_ingest_cutadapt_wf(self) -> None:
+        filepath = os.path.abspath('./janis_core/tests/data/galaxy/cutadapt_wf.ga')
+        jworkflow = ingest_galaxy(filepath)
+        assert(isinstance(jworkflow, Workflow))
+
+        self.assertEquals(len(jworkflow.step_nodes), 6)
+        self.assertEquals(len(jworkflow.output_nodes), 19)
+        self.assertIn('inForwardReads', jworkflow.input_nodes)
+        self.assertIn('inReverseReads', jworkflow.input_nodes)
+        self.assertIn('inLongReads', jworkflow.input_nodes)
+    
+    def test_ingest_unicycler_assembly(self) -> None:
+        filepath = os.path.abspath('./janis_core/tests/data/galaxy/unicycler_assembly.ga')
+        jworkflow = ingest_galaxy(filepath)
+        assert(isinstance(jworkflow, Workflow))
+
         self.assertEquals(len(jworkflow.step_nodes), 6)
         self.assertEquals(len(jworkflow.output_nodes), 19)
         self.assertIn('inForwardReads', jworkflow.input_nodes)

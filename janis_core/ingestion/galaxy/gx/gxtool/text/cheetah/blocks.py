@@ -1,6 +1,8 @@
 
 
 from __future__ import annotations
+import re 
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Optional
@@ -14,6 +16,7 @@ from janis_core.ingestion.galaxy.gx.command.cmdstr import constructs
 
 from janis_core.ingestion.galaxy import expressions
 from janis_core.ingestion.galaxy.expressions.patterns import CHEETAH_EDGE_CASE_INPUT
+from janis_core.ingestion.galaxy.expressions.patterns import CHEETAH_SET
 
 
 def get_blocks(ptr: int, lines: list[str], indent_level: int) -> list[CheetahBlock]:
@@ -156,15 +159,18 @@ class EvaluationStrategy(ABC):
             source = utils.join_lines(source_lines)
             t = Template(source, searchList=[self.input_dict]) # type: ignore
             evaluation = str(unicodify(t))
+            # if evaluation != '':
+            #     if not evaluation.startswith('"') and not evaluation.startswith("'"):
+            #         evaluation = eval(evaluation)  # python string evaluation
+            #         evaluation = str(evaluation)
             return utils.split_lines_blanklines(evaluation)
-        except:
+        except Exception as e:
             return None
 
     @abstractmethod
     def handle_outcome(self, outcome: list[str]) -> list[str]:
         """handles the evaluated text (if successful) and applies any transformations needed"""
         ...
-
 
 
 class InlineEvaluationStrategy(EvaluationStrategy):
@@ -271,17 +277,60 @@ class CheetahBlock:
         return self.stop - self.start + 1
     
     def evaluate(self, input_dict: dict[str, Any]) -> None:
+        # if self.is_import():
+        #     self.evaluated = True
+        #     self.lines = ['']
+        
+        # elif self.is_set():
+        #     self.update_input_dict(input_dict)
+        #     self.evaluated = True
+        #     self.lines = ['']
+
         if self.should_evaluate(input_dict):
-            strategy = self.get_eval_strategy(input_dict)
-            evaluation = strategy.eval()
+            evaluation = self.do_eval(self.lines, input_dict)
             if evaluation is not None:
                 assert(len(self.lines) == len(evaluation))
                 self.evaluated = True
                 self.lines = evaluation
+
+    def do_eval(self, lines: list[str], input_dict: dict[str, Any]) -> Optional[list[str]]:
+        if self.type in [BlockType.INLINE, BlockType.INLINE_ALIAS, BlockType.INLINE_CH]:
+            evaluator = InlineEvaluationStrategy(lines, input_dict)
+        elif self.type == BlockType.CONDITIONAL:
+            evaluator = ConditionalEvaluationStrategy(lines, input_dict)
+        else:
+            raise RuntimeError()
+        return evaluator.eval()
+
+    def is_import(self) -> bool:
+        if self.type == BlockType.INLINE_CH and self.lines[0].startswith('#import '):
+            return True
+        return False
+
+    def is_set(self) -> bool:
+        if self.type == BlockType.INLINE_CH and self.lines[0].startswith('#set '):
+            return True
+        return False
+
+    def update_input_dict(self, input_dict: dict[str, Any]) -> None:
+        matches = expressions.get_matches(self.lines[0], CHEETAH_SET)
+        match = matches[0]
+        key = match.group(1)
+        value = match.group(2)
+        value = self.do_eval([value], input_dict)
+        if value is not None:
+            input_dict[key] = value[0]
+        else:
+            print()
         
     def should_evaluate(self, input_dict: dict[str, Any]) -> bool:
         """dictates whether this block should be evaluated or left as original text"""
-        permitted_blocks = [BlockType.INLINE, BlockType.INLINE_ALIAS, BlockType.INLINE_CH, BlockType.CONDITIONAL]
+        permitted_blocks = [
+            BlockType.INLINE, 
+            BlockType.INLINE_ALIAS, 
+            BlockType.INLINE_CH, 
+            BlockType.CONDITIONAL
+        ]
         if self.lines == ['']:
             return False
         elif self.type not in permitted_blocks:
@@ -297,13 +346,3 @@ class CheetahBlock:
                 if 'input' not in input_dict:
                     return True
         return False
-
-    def get_eval_strategy(self, input_dict: dict[str, Any]) -> EvaluationStrategy:
-        if self.type in [BlockType.INLINE, BlockType.INLINE_ALIAS, BlockType.INLINE_CH]:
-            return InlineEvaluationStrategy(self.lines, input_dict)
-        elif self.type == BlockType.CONDITIONAL:
-            return ConditionalEvaluationStrategy(self.lines, input_dict)
-        else:
-            raise RuntimeError()
-
-

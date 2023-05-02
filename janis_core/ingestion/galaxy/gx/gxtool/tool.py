@@ -25,36 +25,3 @@ class XMLToolDefinition:
     outputs: ParamRegister
     tests: TestRegister
 
-    # def get_input(self, query: str, strategy: str='exact') -> Optional[Param]:
-    #     return self.inputs.get(query.lstrip('$'), strategy=strategy)
-    
-    # def list_inputs(self) -> list[Param]:
-    #     return self.inputs.list()
-
-    # def get_output(self, query: str, strategy: str='exact') -> Optional[Param]:
-    #     return self.outputs.get(query.lstrip('$'), strategy=strategy)
-    
-    # def list_outputs(self) -> list[OutputParam]:
-    #     return self.outputs.list()
-
-    # def list_tests(self) -> list[TTestCase]:
-    #     return self.tests.list()
-
-    # def get_requirements(self) -> list[Requirement]:
-    #     return self.metadata.requirements
-    
-    # def get_main_requirement(self) -> Requirement:
-    #     return self.metadata.get_main_requirement()
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -4,5 +4,42 @@
 templates / scripts
 tools/scripts/myfile.R
 
+
+
+XMLToolDefinition loaded with 
+- all inputs
+- all outputs
+- raw_command
+- tests
+
+
+
+
 TODO
-- ensure scripts are being copied across in janis-assistant
+
+
+- datatype detection could be better 
+    (fastqc)
+    format="fastq,fastq.gz,fastq.bz2,bam,sam"
+    -> 
+    UnionType(Fastq, FastqGz, File, Bam, Sam)
+    
+    (cutadapt)
+    read1: String -> File
+
+- default values can be better 
+    (fastqc)
+    --quiet default -> True
+    --extract default -> True
+
+- optionality detection needs improving
+    (fastqc)
+    -f (format): optional -> False
+    
+    (cutadapt)
+    read1: optional -> mandatory
+
+- linking local vars to input params 
+    (cutadapt)
+    read1 -> input_f
+    

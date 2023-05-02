@@ -15,7 +15,6 @@ def resolve_values(gxstep: dict[str, Any]) -> dict[str, Any]:
     return resolver.resolve()
 
 
-
 class StepValueResolver:
     def __init__(self, gxstep: dict[str, Any], xmltool: XMLToolDefinition):
         self.gxstep = gxstep

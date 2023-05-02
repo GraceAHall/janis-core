@@ -13,9 +13,29 @@ from janis_core.ingestion.galaxy.expressions.patterns import (
     BACKTICK_SECTION,
     QUOTED_SECTION,
     GX_DYNAMIC_KEYWORDS,
+    PYTHON_STR_FUNC
     # GX_STATIC_KEYWORDS,
 )
 
+
+def deindent(cmdstr: str) -> str:
+    textlines = cmdstr.split('\n')
+    textlines = [ln.strip() for ln in textlines]
+    return '\n'.join(textlines)
+
+def remove_blank_lines(cmdstr: str) -> str:
+    textlines = cmdstr.split('\n')
+    textlines = [ln for ln in textlines if ln != '']
+    return '\n'.join(textlines)
+
+def replace_python_str_functions(cmdstr: str) -> str:
+    matches = expressions.get_matches(cmdstr, PYTHON_STR_FUNC)
+    for match in matches:
+        # logging.has_python_str_function()
+        old_section = match[0]
+        new_section = match[1]
+        cmdstr = cmdstr.replace(old_section, new_section)
+    return cmdstr
 
 def replace_function_calls(cmdstr: str) -> str:
     cmdlines = utils.split_lines(cmdstr)
@@ -41,7 +61,7 @@ def replace_backticks(cmdstr: str) -> str:
     return cmdstr
 
 def interpret_raw(cmdstr: str) -> str:
-    return cmdstr.replace('\\', '')
+    return cmdstr.replace('\\', '')  # ? why
 
 def flatten_multiline_strings(cmdstr: str) -> str:
     matches = expressions.get_matches(cmdstr, QUOTED_SECTION)

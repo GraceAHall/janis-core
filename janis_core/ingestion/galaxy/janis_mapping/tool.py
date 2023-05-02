@@ -40,6 +40,8 @@ def to_janis_tool(internal: Tool) -> CommandToolBuilder:
         directories_to_create
         files_to_create
     """
+    if internal.name == 'cutadapt':
+        print()
     outs = [to_janis_tool_output(gout) for gout in internal.outputs]
     inps = [to_janis_tool_input(ginp) for ginp in internal.inputs]
     return CommandToolBuilder(

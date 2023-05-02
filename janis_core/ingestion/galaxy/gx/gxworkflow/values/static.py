@@ -15,7 +15,7 @@ from janis_core.ingestion.galaxy.gx.command.components import InputComponent
 from janis_core.ingestion.galaxy.gx.command.components import Option
 
 from janis_core.ingestion.galaxy.gx.gxtool import load_xmltool
-from janis_core.ingestion.galaxy.gx.gxtool.text import load_partial_cheetah_command
+# from janis_core.ingestion.galaxy.gx.gxtool.text import load_partial_cheetah_command
 
 from . import factory
 from janis_core.ingestion.galaxy.model.workflow import InputValue
@@ -63,7 +63,7 @@ class CheetahInputIngestor:
 
     def prepare_command(self) -> str:
         xmltool = load_xmltool(settings.tool.tool_path)
-        command = load_partial_cheetah_command(inputs_dict=self.g_step['tool_state'])
+        command = load_partial_cheetah_command(xmltool, inputs_dict=self.g_step['tool_state'])
         cmdstr = gen_command_string(source='xml', the_string=command, xmltool=xmltool)
         stmtstr = cmdstr.main.cmdline
         # logging.runtime_data(command)

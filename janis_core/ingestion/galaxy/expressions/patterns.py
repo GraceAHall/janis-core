@@ -27,8 +27,11 @@ LINUX_STREAM_MERGE = r'(?<=\s|^)\d?>&\d'
 KEYVAL_PAIR = r'(?<=\s|^)(\S+?)([=:])(\S+?)(?=\s|$)'
 COMPOUND_OPT = r'^(-\w)(\d+?)$'
 
-CHEETAH_SET = r'(?:^|\s)#set ([$\w\d]+) = [\'"]?([$\w\d.]+)[\'"]?(?=\s|$)'
+# CHEETAH_SET = r'(?:^|\s)#set ([$\w\d]+) = [\'"]?([$\w\d.]+)[\'"]?(?=\s|$)'
+CHEETAH_SET = r'(?:^|\s)#set ([$\w\d]+) *= *([^\n]+)'
 CHEETAH_EDGE_CASE_INPUT = r'\${?input([ =.}\'")]|$)'
+
+PYTHON_STR_FUNC = r'str\( *?([^)]+)\)'
 
 VARIABLES_FMT1 = r'\$\w[\w._]+'
 VARIABLES_FMT2 = r'\$\{\w[\w._]+\}'

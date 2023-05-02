@@ -1,7 +1,7 @@
 
 
 import json
-from typing import Any
+from typing import Any, Optional
 from janis_core.ingestion.galaxy import settings
 from janis_core.ingestion.galaxy import mapping
 
@@ -14,6 +14,7 @@ from janis_core.ingestion.galaxy.model.tool.generate import gen_tool
 from janis_core.ingestion.galaxy.model.tool import Tool
 from janis_core.ingestion.galaxy.model.workflow import Workflow
 from janis_core.ingestion.galaxy.model.workflow import StepMetadata
+from janis_core.ingestion.galaxy.model.workflow import WorkflowStep
 
 from janis_core.ingestion.galaxy.gx.gxworkflow.parsing.metadata import ingest_metadata
 from janis_core.ingestion.galaxy.gx.gxworkflow.parsing.inputs import ingest_workflow_inputs
@@ -31,7 +32,7 @@ from janis_core.ingestion.galaxy.gx.gxworkflow.updates import update_component_k
 from janis_core.ingestion.galaxy.gx.gxworkflow.connections import handle_scattering
 from janis_core.ingestion.galaxy.gx.gxworkflow.values.scripts import handle_step_script_inputs
 
-from janis_core.ingestion.galaxy.gx.wrappers.downloads.wrappers import get_builtin_tool_path
+from janis_core.ingestion.galaxy.gx.wrappers.downloads.main import get_builtin_tool_path
 
 from janis_core.ingestion.galaxy import datatypes
 from janis_core.ingestion.galaxy.startup import setup_data_folder
@@ -39,8 +40,7 @@ from janis_core.ingestion.galaxy.startup import setup_data_folder
 # TODO future 
 # from janis_core.ingestion.galaxy.gx.xmltool.tests import write_tests
 
-
-def ingest_tool(path: str) -> Tool:
+def ingest_tool(path: str, galaxy_step: Optional[Any]=None) -> Tool:
     """
     ingests a galaxy tool xml file into a Tool (internal representation).
     'galaxy' is the galaxy tool representation, and
@@ -49,10 +49,10 @@ def ingest_tool(path: str) -> Tool:
     setup_data_folder()
     datatypes.populate()
     settings.tool.tool_path = path
-    galaxy = load_xmltool(path)
-    command = gen_command(galaxy)
-    container = fetch_container(galaxy.metadata.get_main_requirement())
-    internal = gen_tool(galaxy, command, container)
+    xmltool = load_xmltool(path)
+    command = gen_command(xmltool, galaxy_step)
+    container = fetch_container(xmltool.metadata.get_main_requirement())
+    internal = gen_tool(xmltool, command, container)
     return internal
 
 def ingest_workflow(path: str) -> Workflow:
@@ -87,22 +87,39 @@ def ingest_workflow(path: str) -> Workflow:
     handle_scattering(internal)
     return internal
 
-def ingest_workflow_tools(janis: Workflow, galaxy: dict[str, Any]) -> None:
-    for g_step in galaxy['steps'].values():
-        if g_step['type'] == 'tool':
-            j_step = mapping.step(g_step['id'], janis, galaxy)
-            tool = _parse_step_tool(j_step.metadata)
-            j_step.set_tool(tool)
-            g_step['tool_state'] = load_tool_state(g_step)  # TODO should this happen first?
-
 def _load_galaxy_workflow(path: str) -> dict[str, Any]:
     with open(path, 'r') as fp:
         return json.load(fp)
 
-def _parse_step_tool(metadata: StepMetadata) -> Tool:
-    args = _create_tool_settings_for_step(metadata)
+def ingest_workflow_tools(internal: Workflow, galaxy: dict[str, Any]) -> None:
+    for g_step in galaxy['steps'].values():
+        if g_step['type'] == 'tool':
+            # get the internal step representation we will build upon
+            i_step = mapping.step(g_step['id'], internal, galaxy)
+            
+            # configure settings to ingest the tool
+            _do_tool_ingest_setup(i_step)
+            
+            # get the galaxy tool
+            xmltool = load_xmltool(settings.tool.tool_path)
+
+            # reformat the galaxy step 'tool_state' (inputs_dict)
+            g_step['tool_state'] = load_tool_state(g_step, xmltool)
+
+            # ingest the tool
+            tool = ingest_tool(settings.tool.tool_path, g_step)
+            
+            # add the ingested tool representation to the internal step representation
+            i_step.set_tool(tool)
+
+def _do_tool_ingest_setup(internal: WorkflowStep) -> None:
+    args = _create_tool_settings_for_step(internal.metadata)
     tool_setup(args)
-    return ingest_tool(settings.tool.tool_path)
+
+# def _parse_step_tool(metadata: StepMetadata) -> Tool:
+#     args = _create_tool_settings_for_step(metadata)
+#     tool_setup(args)
+#     return ingest_tool(settings.tool.tool_path)
 
 def _create_tool_settings_for_step(metadata: StepMetadata) -> dict[str, Any]:
     tool_id = metadata.wrapper.tool_id
