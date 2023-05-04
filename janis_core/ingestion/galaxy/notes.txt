@@ -12,7 +12,7 @@ XMLToolDefinition loaded with
 - raw_command
 - tests
 
-
+class DatasetInstance:
 
 
 TODO

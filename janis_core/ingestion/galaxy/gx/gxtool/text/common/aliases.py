@@ -1,9 +1,11 @@
 
+from __future__ import annotations
+from typing import Optional, Tuple, Any
+from dataclasses import dataclass
+from enum import Enum, auto
 
-from typing import Optional, Tuple
-
-import re
-
+import regex as re
+from copy import deepcopy
 from .. import utils
 
 from janis_core.ingestion.galaxy import expressions
@@ -15,11 +17,42 @@ from janis_core.ingestion.galaxy.expressions.patterns import (
 )
 
 
-def resolve_aliases(cmdstr: str) -> str:
-    resolver = AliasResolver()
+
+
+class AssociationType(Enum):
+    STATIC_VALUE = auto()
+    LOCAL_VAR    = auto()
+    INPUT_VAR    = auto() 
+
+@dataclass
+class Association:
+    atype: AssociationType
+    source: str
+    dest: str
+
+
+def extract_associations(cmdstr: str, inputs_dict: dict[str, Any]) -> AssociationRegister:
+    flattened_dict = deepcopy(inputs_dict)
+    flattened_dict = flatten(inputs_dict)
+    extractor = AssociationExtractor(flattened_dict)
+    extractor.extract(cmdstr)
+    return extractor.register
+
+def resolve_associations(cmdstr: str, register: AssociationRegister) -> str:
+    resolver = AssociationResolver(register)
     return resolver.resolve(cmdstr)
 
-def extract_alias(line: str) -> Tuple[Optional[str], Optional[str]]:
+def get_vars_in_text(text: str) -> list[re.Match[str]]:
+    MATCHER = r'(?<=\$\{|\$)(([\w\d]+)(\.[\w\d]+)*)'
+    return expressions.get_matches(text, MATCHER)
+
+def is_association_line(line: str) -> bool: 
+    source, dest = extract_association(line)
+    if source and dest:
+        return True
+    return False
+
+def extract_association(line: str) -> Tuple[Optional[str], Optional[str]]:
     source, dest = None, None
     for func in [
         get_set,
@@ -31,12 +64,6 @@ def extract_alias(line: str) -> Tuple[Optional[str], Optional[str]]:
         if source and dest:
             break
     return source, dest
-
-def is_alias_line(line: str) -> bool:
-    source, dest = extract_alias(line)
-    if source and dest:
-        return True
-    return False
 
 def get_set(line: str) -> Tuple[Optional[str], Optional[str]]:
     matches = expressions.get_matches(line, CHEETAH_SET)
@@ -66,63 +93,108 @@ def get_move(line: str) -> Tuple[Optional[str], Optional[str]]:
         return m.group(1), m.group(2)
     return None, None
 
-
-
-
 # class because it may change in future. 
 # want to keep the .get() and .add() methods stable
-class AliasRegister:
+class AssociationRegister:
     def __init__(self):
-        self.aliases: dict[str, list[str]] = {}
+        self.accs: dict[str, list[Association]] = {}
     
-    def get(self, source: str) -> Optional[str]:
-        if source in self.aliases:
-            destinations = self.aliases[source]
-            if len(destinations) == 1:  # won't return if ambiguity regarding dest
-                return destinations[0]
-        return None
+    def get(self, source: str, depth: int=0) -> list[str]:
+        depth += 1
+        if depth >= 4:
+            return []
+        out: list[str] = []
+        if source in self.accs:
+            for a in self.accs[source]:
+                if a.atype == AssociationType.INPUT_VAR:
+                    out.append(a.dest)
+                elif a.atype == AssociationType.LOCAL_VAR:
+                    out += self.get(a.dest, depth)
+        return out
     
-    def add(self, source: str, dest: str) -> None:
-        if source not in self.aliases:
-            self.aliases[source] = []    
-        self.aliases[source].append(dest)
+    def add(self, acc: Association) -> None:
+        if acc.source not in self.accs:
+            self.accs[acc.source] = []    
+        self.accs[acc.source].append(acc)
 
 
-class AliasResolver:
-    def __init__(self):
-        self.register: AliasRegister = AliasRegister()
+from janis_core.ingestion.galaxy.gx.gxworkflow.parsing.tool_state.flatten import flatten
 
-    def resolve(self, cmdstr: str) -> str:
-        self.register_aliases(cmdstr)
-        return self.resolve_aliases(cmdstr)
+class AssociationExtractor:
+    def __init__(self, inputs_dict: dict[str, Any]):
+        self.inputs_dict = inputs_dict
+        self.register: AssociationRegister = AssociationRegister()
 
-    def register_aliases(self, cmdstr: str) -> None:
+    def extract(self, cmdstr: str) -> None:
         lines = utils.split_lines(cmdstr)
         for line in lines:
-            self.register_line(line)
-
+            if is_association_line(line):
+                self.register_line(line)
+    
     def register_line(self, line: str) -> None:
-        source, dest = extract_alias(line)
+        source, dest = extract_association(line)
         if source and dest and source != dest:
-            self.register.add(source, dest)
+            association = self.generate_association(source, dest)
+            if association:
+                self.register.add(association)
 
-    def resolve_aliases(self, cmdstr: str) -> str:
+    def generate_association(self, source: str, dest: str) -> Optional[Association]:
+        source = source.strip('${}')
+        matches = get_vars_in_text(dest)
+        for match in matches:
+            v = match.groups()[0]
+            if v in self.inputs_dict:
+                return Association(AssociationType.INPUT_VAR, source, v)
+            else:
+                return Association(AssociationType.LOCAL_VAR, source, v)
+
+    def looks_like_local_var(self, word: str) -> bool:
+        if not word in ['False', 'True']:
+            is_quoted: bool = False
+            if word.startswith('"') or word.startswith("'"):
+                is_quoted = True
+
+            if not is_quoted and not word.isnumeric():
+                return True
+            elif is_quoted:
+                word = word[1:-1].strip()
+                if word.startswith('$'):
+                    return True
+        
+        return False
+    
+
+
+class AssociationResolver:
+    def __init__(self, register: AssociationRegister):
+        self.register = register
+
+    def resolve(self, cmdstr: str) -> str:
         resolved_lines: list[str] = []
-        for line in utils.split_lines_whitespace(cmdstr):
+        cmdstr_lines = cmdstr.split('\n')
+        for line in cmdstr_lines:
             line = self.resolve_line(line)
             resolved_lines.append(line)
         cmdstr = utils.join_lines(resolved_lines)
         return cmdstr
 
     def resolve_line(self, line: str) -> str:
-        if not is_alias_line(line):
-            for source in self.register.aliases:
-                dest = self.register.get(source)
-                if dest:
-                    # ensure ends/starts with whitespace or quotes or forwardslash or is curly brackets
-                    matches = self.get_line_matches(source, line)
-                    for match in matches:
-                        line = self.perform_replacement(match, dest, line)
+        if not is_association_line(line):
+            matches = get_vars_in_text(line)
+            for match in reversed(matches):
+                v = match.groups()[0]
+                accs = self.register.get(v)
+                if accs:
+                    smallest_acc = min(accs, key=lambda x: len(x))
+                    line = self.perform_replacement(match, smallest_acc, line)
+
+        # for source in self.register.accs:
+        #     dest = self.register.get(source)
+        #     if dest:
+        #         # ensure ends/starts with whitespace or quotes or forwardslash or is curly brackets
+        #         matches = self.get_line_matches(source, line)
+        #         for match in matches:
+        #             line = self.perform_replacement(match, dest, line)
         return line
 
     def get_line_matches(self, source: str, line: str) -> list[re.Match[str]]:

@@ -94,23 +94,22 @@ def _load_galaxy_workflow(path: str) -> dict[str, Any]:
 def ingest_workflow_tools(internal: Workflow, galaxy: dict[str, Any]) -> None:
     for g_step in galaxy['steps'].values():
         if g_step['type'] == 'tool':
+            
             # get the internal step representation we will build upon
             i_step = mapping.step(g_step['id'], internal, galaxy)
             
             # configure settings to ingest the tool
             _do_tool_ingest_setup(i_step)
             
-            # get the galaxy tool
-            xmltool = load_xmltool(settings.tool.tool_path)
-
             # reformat the galaxy step 'tool_state' (inputs_dict)
-            g_step['tool_state'] = load_tool_state(g_step, xmltool)
+            g_step['tool_state'] = load_tool_state(g_step)
 
             # ingest the tool
             tool = ingest_tool(settings.tool.tool_path, g_step)
             
             # add the ingested tool representation to the internal step representation
             i_step.set_tool(tool)
+
 
 def _do_tool_ingest_setup(internal: WorkflowStep) -> None:
     args = _create_tool_settings_for_step(internal.metadata)

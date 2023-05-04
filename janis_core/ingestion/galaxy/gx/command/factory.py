@@ -2,7 +2,7 @@
 from typing import Optional, Any
 
 from ..gxtool.tool import XMLToolDefinition
-from ..gxtool.text import simplify_command
+from ..gxtool.text import simplify_xmltool_command
 
 from .cmdstr.CommandString import CommandString
 from .cmdstr.generate import gen_command_string
@@ -72,7 +72,7 @@ class CommandFactory:
     
     def generate_cmdstr(self, inputs_dict: Optional[dict[str, Any]]=None) -> str:
         cmdstr = self.xmltool.raw_command
-        cmdstr = simplify_command(cmdstr, inputs_dict=inputs_dict)
+        cmdstr = simplify_xmltool_command(cmdstr, inputs_dict=inputs_dict)
         return cmdstr
 
     # def gen_cmdstr_from_xml(self, ) -> CommandString:
