@@ -179,6 +179,7 @@ def reset_globals() -> None:
     settings.translate.nextflow.MINIMAL_PROCESS = True
 
     # general
+    settings.general.SAFE_MODE = False
     settings.validation.STRICT_IDENTIFIERS = True 
     settings.translate.ALLOW_EMPTY_CONTAINER = True 
     settings.translate.MERGE_RESOURCES = False
@@ -207,7 +208,7 @@ def do_preprocessing_workflow(wf: Workflow, ignore_task_inputs: bool=False) -> W
     wf = to_builders(wf)
     if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(wf, WorkflowBuilder):
         assert(isinstance(wf, WorkflowBuilder))
-        wf = prune_workflow(wf)
+        prune_workflow(wf)
     if not ignore_task_inputs:
         nextflow.preprocessing.populate_task_inputs_workflowmode(wf, wf)
     assert(isinstance(wf, WorkflowBuilder))

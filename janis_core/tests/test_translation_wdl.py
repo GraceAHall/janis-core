@@ -53,6 +53,7 @@ from janis_core.utils.scatter import ScatterDescription, ScatterMethod
 
 
 def reset_global_settings() -> None:
+    settings.general.SAFE_MODE = False
     settings.validation.STRICT_IDENTIFIERS = True 
     settings.translate.MODE = 'extended'
     settings.translate.ALLOW_EMPTY_CONTAINER = True 

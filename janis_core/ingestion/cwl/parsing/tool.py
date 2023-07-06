@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 
 
+from janis_core import settings
 from janis_core import ToolInput, ToolArgument, ToolOutput, WildcardSelector, CommandToolBuilder, CommandTool, InputSelector
 from janis_core.types import File, Stdout, Stderr, Directory, DataType
-from janis_core import settings
 from janis_core.messages import log_warning
 from janis_core import translation_utils as utils
 
@@ -31,7 +31,7 @@ class CLTEntityParser(ABC):
 
     def parse(self) -> Any:
         # normal mode
-        if settings.ingest.SAFE_MODE:
+        if settings.general.SAFE_MODE:
             try:
                 j_entity = self.do_parse()
                 self.success = True

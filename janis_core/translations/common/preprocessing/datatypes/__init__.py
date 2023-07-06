@@ -1,5 +1,6 @@
 
 
-from .main import balance_mismatch_secondary_types
+from .main import repair_secondary_mismatches
+from .gather import gather_connections
 
 

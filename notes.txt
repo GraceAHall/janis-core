@@ -2,6 +2,14 @@
 
 
 TODO: TEST SUITE 100%
+- preprocessing: pruning()
+    - test whether changes to workflow are causing issues
+- preprocessing: to_builders()
+    - test whether changes to workflow are causing issues
+- preprocessing: balance_mismatch_secondary_types()
+    - not yet accounting for non-array types
+    - not yet accounting for complex source connections
+
 - nextflow
     - baseName vs simpleName?
 - wdl 

@@ -187,14 +187,14 @@ class TranslatorBase(ABC):
                     Logger.log(f"Written {fn_tool} to disk")
             
             # copying source files 
-            if settings.general.SOURCE_FILES is not None:
+            if settings.translate.SOURCE_FILES is not None:
                 # create source folder in basedir
                 source_dir = os.path.join(basedir, 'source')
                 if not os.path.isdir(source_dir):
                     os.mkdir(source_dir)
                 
                 # copy files
-                for src, dest in settings.general.SOURCE_FILES:
+                for src, dest in settings.translate.SOURCE_FILES:
                     dest = os.path.join(source_dir, dest)
                     if not os.path.isdir(os.path.dirname(dest)):
                         os.mkdir(os.path.dirname(dest))
@@ -278,14 +278,14 @@ class TranslatorBase(ABC):
 
             # writing source files to output folder (specifically galaxy tool wrappers)
             # copying source files 
-            if settings.general.SOURCE_FILES is not None:
+            if settings.translate.SOURCE_FILES is not None:
                 # create source folder in basedir
                 source_dir = os.path.join(basedir, 'source')
                 if not os.path.isdir(source_dir):
                     os.mkdir(source_dir)
                 
                 # copy files
-                for src, dest in settings.general.SOURCE_FILES:
+                for src, dest in settings.translate.SOURCE_FILES:
                     dest = os.path.join(source_dir, dest)
                     if not os.path.isdir(os.path.dirname(dest)):
                         os.mkdir(os.path.dirname(dest))

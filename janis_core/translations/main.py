@@ -10,6 +10,7 @@ from janis_core.utils import lowercase_dictkeys
 from janis_core.translation_deps.supportedtranslations import SupportedTranslation
 from janis_core.translations.common import to_builders
 from janis_core.translations.common import prune_workflow
+from janis_core.translations.common import repair_secondary_mismatches
 from .translationbase import TranslatorBase
 
 
@@ -99,10 +100,13 @@ def translate(
         settings.translate.MAX_MEM = max_mem
 
     # preprocessing
+    # TODO check if to_builders messes anything up by changing objects
     entity = to_builders(entity)
     if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(entity, WorkflowBuilder):
         assert(isinstance(entity, WorkflowBuilder))
-        entity = prune_workflow(entity)
+        prune_workflow(entity)
+    if isinstance(entity, WorkflowBuilder):
+        repair_secondary_mismatches(entity)
 
     # select the translation unit 
     translator = get_translator(dest_fmt)

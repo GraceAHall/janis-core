@@ -8,6 +8,11 @@ from janis_core.ingestion import ingest
 from janis_core.translations import translate
 from janis_core.tests.testtools import FileOutputPythonTestTool
 from janis_core.tests.testtools import GridssTestTool
+from janis_core.tests.testworkflows import NoSecondaryMismatchTW
+from janis_core.tests.testworkflows import SingleSecondaryMismatchTW1
+from janis_core.tests.testworkflows import SingleSecondaryMismatchTW2
+from janis_core.tests.testworkflows import SingleSecondaryMismatchTW3
+from janis_core.tests.testworkflows import MultipleSecondaryMismatchTW
 from janis_core.tests.testworkflows import PruneFlatTW
 from janis_core.tests.testworkflows import PruneNestedTW
 from janis_core.tests.testworkflows import AssemblyTestWF
@@ -23,6 +28,8 @@ from janis_core import CodeTool
 from janis_core.translations import nextflow
 from janis_core.translations.common import to_builders
 from janis_core.translations.common import prune_workflow
+from janis_core.translations.common import repair_secondary_mismatches
+from janis_core.translations.common import gather_connections
 from janis_core import settings
 
 import os 
@@ -121,10 +128,9 @@ def _get_nf_process_script_lines(process_text: str) -> list[str]:
     return out
 
 def _reset_global_settings() -> None:
-    
     nextflow.task_inputs.clear()
     nextflow.params.clear()
-    settings.ingest.SAFE_MODE = False
+    settings.general.SAFE_MODE = False
     settings.ingest.galaxy.GEN_IMAGES = False
     settings.ingest.galaxy.DISABLE_CONTAINER_CACHE = False
     settings.ingest.cwl.INGEST_JAVASCRIPT_EXPRESSIONS = True
@@ -137,8 +143,8 @@ def _reset_global_settings() -> None:
     settings.graph.ALLOW_INCOMPATIBLE_TYPES = True
     settings.validation.STRICT_IDENTIFIERS = False
     settings.validation.VALIDATE_STRINGFORMATTERS = False
-    settings.translate.MODE = 'regular'
     settings.translate.ALLOW_EMPTY_CONTAINER = True
+    settings.translate.MODE = 'regular'
 
 
 
@@ -296,12 +302,14 @@ class TestPreprocessingPrune(unittest.TestCase):
     
     def setUp(self) -> None:
         _reset_global_settings()
+        
         self.flat_wf = PruneFlatTW()
         self.flat_wf = to_builders(self.flat_wf)
-        self.flat_wf = prune_workflow(self.flat_wf)
+        prune_workflow(self.flat_wf)
+        
         self.nested_wf = PruneNestedTW()
         self.nested_wf = to_builders(self.nested_wf)
-        self.nested_wf = prune_workflow(self.nested_wf)
+        prune_workflow(self.nested_wf)
 
     ### workflow inputs ###
     
@@ -479,6 +487,170 @@ class TestPreprocessingPrune(unittest.TestCase):
             'inStrOpt3', 
         ])
         self.assertEqual(actual_tinputs, expected_tinputs)
+
+
+
+
+# ---- PREPROCESSING: DATATYPES ------------------------------
+
+class TestPreprocessingDatatypeMismatches(unittest.TestCase):
+    
+    def setUp(self) -> None:
+        _reset_global_settings()
+
+    def test_no_mismatches(self) -> None:
+        wf = NoSecondaryMismatchTW()
+        wf = to_builders(wf)
+        # assert no mismatch
+        register = gather_connections(wf)
+        self.assertEqual(len(register.mismatched_secondary_connections), 0)
+
+    def test_generic_generic_mismatch(self) -> None:
+        wf = SingleSecondaryMismatchTW1()
+        wf = to_builders(wf)
+        # assert single mismatch
+        register = gather_connections(wf)
+        self.assertEqual(len(register.mismatched_secondary_connections), 1)
+        
+        # assert workflow input type changes
+        repair_secondary_mismatches(wf)
+        actual_types = {x.id(): x.datatype.__repr__() for x in wf.input_nodes.values()}
+        expected_types = {
+            'inGeneric1': 'GenericFileWithSecondaries [.crai]',
+            'inGeneric2': 'GenericFileWithSecondaries [.crai]',
+            'inFastaWithIndexes': 'FastaWithIndexes',
+            'inFastaDict': 'FastDict',
+            'inFasta': 'Fasta',
+            'inBamBai': 'IndexedBam',
+            'inBam': 'BAM',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+        
+        # assert tool input type changes
+        tool = wf.step_nodes['stp1'].tool
+        actual_types = {x.id(): x.input_type.__repr__() for x in tool._inputs}
+        expected_types = {
+            'inGeneric1': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inGeneric2': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inFastaWithIndexes': 'Optional<FastaWithIndexes>',
+            'inFastaDict': 'Optional<FastDict>',
+            'inFasta': 'Optional<Fasta>',
+            'inBamBai': 'Optional<IndexedBam>',
+            'inBam': 'Optional<BAM>',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+
+    def test_generic_defined_mismatch(self) -> None:
+        wf = SingleSecondaryMismatchTW2()
+        wf = to_builders(wf)
+
+        # assert single mismatch
+        register = gather_connections(wf)
+        self.assertEqual(len(register.mismatched_secondary_connections), 1)
+        
+        # assert workflow input type changes
+        repair_secondary_mismatches(wf)
+        actual_types = {x.id(): x.datatype.__repr__() for x in wf.input_nodes.values()}
+        expected_types = {
+            'inGeneric1': 'GenericFileWithSecondaries [.crai]',
+            'inGeneric2': 'IndexedBam',
+            'inFastaWithIndexes': 'FastaWithIndexes',
+            'inFastaDict': 'FastDict',
+            'inFasta': 'Fasta',
+            'inBamBai': 'IndexedBam',
+            'inBam': 'BAM',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+        
+        # assert tool input type changes
+        tool = wf.step_nodes['stp1'].tool
+        actual_types = {x.id(): x.input_type.__repr__() for x in tool._inputs}
+        expected_types = {
+            'inGeneric1': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inGeneric2': 'Optional<IndexedBam>',
+            'inFastaWithIndexes': 'Optional<FastaWithIndexes>',
+            'inFastaDict': 'Optional<FastDict>',
+            'inFasta': 'Optional<Fasta>',
+            'inBamBai': 'Optional<IndexedBam>',
+            'inBam': 'Optional<BAM>',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+    
+    def test_defined_defined_mismatch(self) -> None:
+        # this probably shouldn't happen, but testing just in case. 
+        # safer to fix these issues in the workflow I guess.
+        wf = SingleSecondaryMismatchTW3()
+        wf = to_builders(wf)
+
+        # assert single mismatch
+        register = gather_connections(wf)
+        self.assertEqual(len(register.mismatched_secondary_connections), 1)
+        
+        # assert workflow input type changes
+        repair_secondary_mismatches(wf)
+        actual_types = {x.id(): x.datatype.__repr__() for x in wf.input_nodes.values()}
+        expected_types = {
+            'inGeneric1': 'GenericFileWithSecondaries [.crai]',
+            'inGeneric2': 'GenericFileWithSecondaries []',
+            'inFastaWithIndexes': 'FastaWithIndexes',
+            'inFastaDict': 'FastaWithIndexes',
+            'inFasta': 'Fasta',
+            'inBamBai': 'IndexedBam',
+            'inBam': 'BAM',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+        
+        # assert tool input type changes
+        tool = wf.step_nodes['stp1'].tool
+        actual_types = {x.id(): x.input_type.__repr__() for x in tool._inputs}
+        expected_types = {
+            'inGeneric1': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inGeneric2': 'Optional<GenericFileWithSecondaries> []',
+            'inFastaWithIndexes': 'Optional<FastaWithIndexes>',
+            'inFastaDict': 'Optional<FastaWithIndexes>',
+            'inFasta': 'Optional<Fasta>',
+            'inBamBai': 'Optional<IndexedBam>',
+            'inBam': 'Optional<BAM>',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+    
+    def test_multiple_mismatch(self) -> None:
+        # this probably shouldn't happen, but testing just in case. 
+        # safer to fix these issues in the workflow I guess.
+        wf = MultipleSecondaryMismatchTW()
+        wf = to_builders(wf)
+
+        # assert single mismatch
+        register = gather_connections(wf)
+        self.assertEqual(len(register.mismatched_secondary_connections), 2)
+        
+        # assert workflow input type changes
+        repair_secondary_mismatches(wf)
+        actual_types = {x.id(): x.datatype.__repr__() for x in wf.input_nodes.values()}
+        expected_types = {
+            'inGeneric1': 'GenericFileWithSecondaries [.crai]',
+            'inGeneric2': 'GenericFileWithSecondaries [.crai]',
+            'inFastaWithIndexes': 'FastaWithIndexes',
+            'inFastaDict': 'FastaWithIndexes',
+            'inFasta': 'Fasta',
+            'inBamBai': 'IndexedBam',
+            'inBam': 'BAM',
+        }
+        self.assertDictEqual(actual_types, expected_types)
+        
+        # assert tool input type changes
+        tool = wf.step_nodes['stp1'].tool
+        actual_types = {x.id(): x.input_type.__repr__() for x in tool._inputs}
+        expected_types = {
+            'inGeneric1': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inGeneric2': 'Optional<GenericFileWithSecondaries> [.crai]',
+            'inFastaWithIndexes': 'Optional<FastaWithIndexes>',
+            'inFastaDict': 'Optional<FastaWithIndexes>',
+            'inFasta': 'Optional<Fasta>',
+            'inBamBai': 'Optional<IndexedBam>',
+            'inBam': 'Optional<BAM>',
+        }
+        self.assertDictEqual(actual_types, expected_types)
 
 
 
@@ -778,7 +950,7 @@ class TestCwlToWdl(unittest.TestCase):
         toolstr = _run(filepath, self.src, self.dest)
         print(toolstr)
 
-    @unittest.skip('implement secondary type mismatch cleanup')
+    @unittest.skip('indexed fasta being read as File type, but should be indexed fasta')
     def test_kids_manta(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/kf-somatic-workflow/workflow/kfdrc_production_manta_wf.cwl'
         mainstr = _run(filepath, self.src, self.dest)

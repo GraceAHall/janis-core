@@ -89,9 +89,9 @@ GALAXY_TESTDATA_PATH = os.path.join(os.getcwd(), 'janis_core/tests/data/galaxy')
 ### helper functions ###
 
 def _reset_global_settings() -> None:
+    settings.general.SAFE_MODE = False
     settings.ingest.galaxy.GEN_IMAGES = False
     settings.ingest.galaxy.DISABLE_CONTAINER_CACHE = False
-    settings.ingest.SAFE_MODE = True
     settings.ingest.cwl.INGEST_JAVASCRIPT_EXPRESSIONS = False
     settings.ingest.cwl.REQUIRE_CWL_VERSION = False
     settings.testing.TESTING_USE_DEFAULT_CONTAINER = True

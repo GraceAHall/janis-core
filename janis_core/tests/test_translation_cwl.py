@@ -46,6 +46,7 @@ from janis_core import settings
 
 
 def reset_global_settings() -> None:
+    settings.general.SAFE_MODE = False
     settings.validation.STRICT_IDENTIFIERS = True 
     settings.translate.MODE = 'regular'
     settings.translate.ALLOW_EMPTY_CONTAINER = True 
