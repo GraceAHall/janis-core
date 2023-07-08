@@ -6,7 +6,10 @@ from copy import deepcopy
 import sys
 import inspect
 
+from janis_core import settings
 from janis_core import JanisShed
+from janis_core import types
+from janis_core import redefinitions
 from janis_core.types import (
     DataType, 
     GenericFileWithSecondaries, 
@@ -22,9 +25,7 @@ from janis_core.types import (
 )
 
 from janis_core.utils.errors import UnsupportedError
-from janis_core import settings
-
-from .expressions import parse_basic_expression
+# from .expressions import parse_basic_expression
 
 
 file_datatype_cache: dict[int, Any] = {}

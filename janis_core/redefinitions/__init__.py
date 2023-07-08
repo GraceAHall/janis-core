@@ -23,3 +23,5 @@ Previously, this was the situation
 We are trying to decouple these seperate packages. 
 
 """
+
+from . import types
