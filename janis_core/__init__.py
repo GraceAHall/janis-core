@@ -45,7 +45,6 @@ from janis_core.tool.commandtool import (
 from janis_core.code.pythontool import PythonTool, CodeTool
 
 # Types
-
 from janis_core.types.data_types import DataType
 from janis_core.types.common_data_types import (
     Boolean,
@@ -73,3 +72,7 @@ from janis_core.utils import get_value_for_hints_and_ordered_resource_tuple
 from janis_core.utils.metadata import Metadata, WorkflowMetadata, ToolMetadata
 from janis_core.utils.secondary import apply_secondary_file_format_to_filename
 from janis_core.transformation import JanisTransformation, JanisTransformationGraph
+
+# redefined entities from janis-bioinformatics, janis-unix, 
+# janis-pipelines for segregation of packages
+from janis_core import redefinitions

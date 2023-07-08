@@ -2,14 +2,11 @@
 
 from typing import Any, Optional, Tuple
 import regex as re
-from copy import deepcopy
 import sys
 import inspect
 
 from janis_core import settings
 from janis_core import JanisShed
-from janis_core import types
-from janis_core import redefinitions
 from janis_core.types import (
     DataType, 
     GenericFileWithSecondaries, 
