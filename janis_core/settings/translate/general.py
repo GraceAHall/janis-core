@@ -7,9 +7,8 @@ from janis_core.translation_deps.exportpath import ExportPathKeywords
 DEST:                       str = ''            # destination language: one of 'nextflow' | 'cwl' | 'wdl'
 MODE:                       str = 'regular'     # one of "skeleton", "regular", "extended"
                                                 # dictates the tool inputs & tool command which should be translated
-
+SAFE_MODE:                  bool = True  # master controller for whether exceptions halt program, or are handled. 
 EXPORT_PATH:                str = ExportPathKeywords.default # base output directory
-
 ALLOW_EMPTY_CONTAINER:      bool = True  # makes docker containers optional
 MERGE_RESOURCES:            bool = False # merge resource requirements into inputs config
 RENDER_COMMENTS:            bool = True  # whether to render info comments in the translation

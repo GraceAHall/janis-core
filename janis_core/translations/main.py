@@ -4,6 +4,7 @@ from typing import Optional, Any
 from inspect import isclass
 
 from janis_core import settings
+from janis_core.translations import nextflow
 from janis_core import CodeTool, CommandTool, WorkflowBase, WorkflowBuilder
 from janis_core import Tool
 from janis_core.utils import lowercase_dictkeys
@@ -97,6 +98,10 @@ def translate(
         settings.translate.MAX_DURATION = max_duration
     if max_mem is not None:
         settings.translate.MAX_MEM = max_mem
+
+    # reset global vars
+    nextflow.task_inputs.clear()
+    nextflow.params.clear()
 
     # preprocessing
     entity = to_builders(entity)

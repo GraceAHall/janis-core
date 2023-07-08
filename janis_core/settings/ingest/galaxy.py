@@ -12,7 +12,8 @@ _GALAXY_DATA_DIR = os.path.join(_JANIS_INSTALL_DIR, 'ingestion', 'data', 'galaxy
 # public
 
 GEN_IMAGES = False
-DISABLE_CONTAINER_CACHE = False
+DISABLE_IMAGE_CACHE = False
+DISABLE_WRAPPER_CACHE = False
 GALAXY_CONFIG = f'{_GALAXY_DATA_DIR}/galaxy_config.yaml'
 DATATYPES_YAML = f'{_INGEST_DATA_DIR}/janis_types.yaml'
 CONTAINER_CACHE = f'{_JANIS_DATA_DIR}/galaxy_containers/cache.json'

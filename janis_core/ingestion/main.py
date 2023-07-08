@@ -30,7 +30,9 @@ ingestor_map = {
 def ingest(
     path: str, 
     format: str, 
-    build_galaxy_tool_images: bool = False, 
+    galaxy_build_images: bool=False, 
+    galaxy_no_image_cache: bool=False,
+    galaxy_no_wrapper_cache: bool=False
     ) -> Tool:
     # setup logging
     configure_logging()                         
@@ -39,8 +41,13 @@ def ingest(
     settings.ingest.SOURCE = format                     
     settings.validation.STRICT_IDENTIFIERS = False
     settings.validation.VALIDATE_STRINGFORMATTERS = False
-    if build_galaxy_tool_images:
+    
+    if galaxy_build_images:
         settings.ingest.galaxy.GEN_IMAGES = True
+    if galaxy_no_image_cache:
+        settings.ingest.galaxy.DISABLE_IMAGE_CACHE = True
+    if galaxy_no_wrapper_cache:
+        settings.ingest.galaxy.DISABLE_WRAPPER_CACHE = True
 
     # do ingest
     assert(format in SupportedIngestion.all())  # validate format

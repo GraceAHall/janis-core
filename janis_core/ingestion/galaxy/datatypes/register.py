@@ -28,6 +28,9 @@ class DatatypeRegister:
         provides structue where we can search all the galaxy and janis types given what we see
         in galaxy 'format' attributes.
         """
+        self.format_map = {}
+        self.extension_map = {}
+        
         path = DATATYPES_YAML
         with open(path, 'r') as fp:
             datatypes = yaml.safe_load(fp)

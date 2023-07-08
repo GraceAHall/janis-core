@@ -89,8 +89,8 @@ GALAXY_TESTDATA_PATH = os.path.join(os.getcwd(), 'janis_core/tests/data/galaxy')
 
 def _reset_global_settings() -> None:
     settings.ingest.galaxy.GEN_IMAGES = False
-    settings.ingest.galaxy.DISABLE_CONTAINER_CACHE = False
-    settings.ingest.SAFE_MODE = True
+    settings.ingest.galaxy.DISABLE_IMAGE_CACHE = False
+    settings.translate.SAFE_MODE = True
     settings.ingest.cwl.INGEST_JAVASCRIPT_EXPRESSIONS = False
     settings.ingest.cwl.REQUIRE_CWL_VERSION = False
     settings.testing.TESTING_USE_DEFAULT_CONTAINER = True
@@ -298,7 +298,7 @@ class TestResolveDependencies(unittest.TestCase):
     def setUp(self) -> None:
         _reset_global_settings()
         settings.ingest.galaxy.GEN_IMAGES = True
-        settings.ingest.galaxy.DISABLE_CONTAINER_CACHE = True
+        settings.ingest.galaxy.DISABLE_IMAGE_CACHE = True
         settings.testing.TESTING_USE_DEFAULT_CONTAINER = False
 
     def test_coreutils_requirement(self) -> None:

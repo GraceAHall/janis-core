@@ -15,7 +15,7 @@ from janis_core.ingestion.galaxy.fileio import safe_init_file
 
 
 def init_cache() -> ContainerCache:
-    if settings.ingest.galaxy.DISABLE_CONTAINER_CACHE:
+    if settings.ingest.galaxy.DISABLE_IMAGE_CACHE:
         temp = tempfile.TemporaryFile()
         cache_path = os.path.join(tempfile.gettempdir(), str(temp.name))
         os.remove(cache_path)

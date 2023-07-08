@@ -121,12 +121,11 @@ def _get_nf_process_script_lines(process_text: str) -> list[str]:
     return out
 
 def _reset_global_settings() -> None:
-    
     nextflow.task_inputs.clear()
     nextflow.params.clear()
-    settings.ingest.SAFE_MODE = False
+    settings.translate.SAFE_MODE = False
     settings.ingest.galaxy.GEN_IMAGES = False
-    settings.ingest.galaxy.DISABLE_CONTAINER_CACHE = False
+    settings.ingest.galaxy.DISABLE_IMAGE_CACHE = False
     settings.ingest.cwl.INGEST_JAVASCRIPT_EXPRESSIONS = True
     settings.ingest.cwl.REQUIRE_CWL_VERSION = False
     settings.datatypes.ALLOW_UNPARSEABLE_DATATYPES = True

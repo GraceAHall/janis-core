@@ -31,7 +31,7 @@ class CLTEntityParser(ABC):
 
     def parse(self) -> Any:
         # normal mode
-        if settings.ingest.SAFE_MODE:
+        if settings.translate.SAFE_MODE:
             try:
                 j_entity = self.do_parse()
                 self.success = True
