@@ -5,8 +5,8 @@ from janis_core.translation_deps.exportpath import ExportPathKeywords
 
 
 DEST:                       str = ''            # destination language: one of 'nextflow' | 'cwl' | 'wdl'
-MODE:                       str = 'extended'     # one of "skeleton", "regular", "extended"
-                                                # dictates the tool inputs & tool command which should be translated
+MODE:                       str = 'extended'    # one of "skeleton", "regular", "extended"
+AS_WORKFLOW:                bool = False        # wrap tool translation in workflow
 
 EXPORT_PATH:                str = ExportPathKeywords.default # base output directory
 

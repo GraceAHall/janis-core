@@ -72,9 +72,13 @@ def write_workflow_to_disk(
         workflow_name=None
     )
     safe_init_folder(basedir)
+    
+    # subdir structure
+    for subdir in outdir_structure.values():
+        safe_init_folder(os.path.join(basedir, subdir))
 
     # writing main workflow
-    _write_file(tup_main, basedir, 'main', outdir_structure['main'])
+    _write_file(tup_main, basedir, 'main', None)
     
     # writing tools
     for tup_tool in tup_tools:
@@ -86,14 +90,14 @@ def write_workflow_to_disk(
 
     # writing inputs file
     if settings.translate.WRITE_INPUTS_FILE:
-        _write_file(tup_inputs, basedir, 'inputs', outdir_structure['inputs'])
+        _write_file(tup_inputs, basedir, 'inputs', None)
     else:
         Logger.log("Skipping writing inputs config file")
 
     # writing resources file
     if tup_resources is not None:
         if settings.translate.WITH_RESOURCE_OVERRIDES and not settings.translate.MERGE_RESOURCES:
-            _write_file(tup_resources, basedir, 'resources', outdir_structure['resources'])
+            _write_file(tup_resources, basedir, 'resources', None)
         else:
             Logger.log("Skipping writing resources config file")
 

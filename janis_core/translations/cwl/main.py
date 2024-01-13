@@ -48,6 +48,7 @@ from janis_core.operators import (
     AliasSelector,
     ForEachSelector,
 )
+from janis_core.modifications import format_case 
 from janis_core.operators.logical import IsDefined, If, RoundOperator
 from janis_core.operators.standard import FirstOperator
 from janis_core.tool.commandtool import CommandToolBuilder, ToolInput, ToolArgument, ToolOutput
@@ -84,6 +85,13 @@ STDERR_NAME = "_stderr"
 
 
 class CwlTranslator(TranslatorBase, metaclass=TranslatorMeta):
+    
+    OUTDIR_STRUCTURE: dict[str, str | None] = {
+        'subworkflows': 'subworkflows',
+        'tools': 'tools',
+        'helpers': 'scripts',
+    }
+
     def __init__(self):
         super().__init__(name="cwl")
 
@@ -894,19 +902,29 @@ class CwlTranslator(TranslatorBase, metaclass=TranslatorMeta):
 
     @staticmethod
     def workflow_filename(workflow: WorkflowBuilder, is_main: Optional[bool]=False) -> str:
-        return workflow.versioned_id() + ".cwl"
+        text = workflow.id() 
+        text = format_case('file', text)
+        return f"{text}.cwl"
 
     @staticmethod
     def inputs_filename(workflow):
-        return workflow.id() + "-inp.yml"
+        text = workflow.id()
+        text = format_case('file', text)
+        return f"{text}-inp.yml"
 
     @staticmethod
     def tool_filename(tool):
-        return (tool.versioned_id() if isinstance(tool, Tool) else str(tool)) + ".cwl"
+        # return (tool.versioned_id() if isinstance(tool, Tool) else str(tool)) + ".cwl"
+        text = tool.id()
+        text = format_case('file', text)
+        return f"{text}.cwl"
 
     @staticmethod
     def resources_filename(workflow):
-        return workflow.id() + "-resources.yml"
+        # return workflow.id() + "-resources.yml"
+        text = workflow.id()
+        text = format_case('file', text)
+        return f"{text}-resources.yml"
 
     
     ### VALIDATION ###

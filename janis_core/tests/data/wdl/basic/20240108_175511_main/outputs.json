@@ -1,0 +1,13 @@
+{
+  "main.outFile": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outFile/aln.sorted.bam",
+  "main.outFileArr": [
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outFileArr/0/mutant_R1.fastq",
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outFileArr/1/wildtype.fna"
+  ],
+  "main.outFileOpt": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outFileOpt/test.txt",
+  "main.outSecondary": {
+    "bai": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outSecondary/bai/aln.sorted.bam.bai",
+    "bam": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outSecondary/bam/aln.sorted.bam"
+  },
+  "main.outStdout": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175511_main/out/outStdout/stdout.txt"
+}

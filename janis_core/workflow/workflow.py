@@ -3,7 +3,6 @@ import os
 from abc import abstractmethod
 from inspect import isclass
 from typing import List, Union, Optional, Dict, Tuple, Any, Set, Iterable, Type
-from uuid import uuid4
 
 from janis_core.messages import log_message
 from janis_core.messages import ErrorCategory
@@ -105,7 +104,6 @@ class InputNode(Node):
         doc: Optional[InputDocumentation] = None,
     ):
         super().__init__(wf, NodeType.INPUT, identifier)
-        self.uuid: str = str(uuid4())
         self.datatype = datatype
         self.default = default
         self.doc: Optional[InputDocumentation] = doc
@@ -134,7 +132,6 @@ class StepNode(Node):
         _foreach=None,
     ):
         super().__init__(wf, NodeType.STEP, identifier)
-        self.uuid: str = str(uuid4())
         self.tool = tool
         self.doc = doc
         self.scatter = scatter
@@ -264,7 +261,6 @@ class OutputNode(Node):
         skip_typecheck=False,
     ):
         super().__init__(wf, NodeType.OUTPUT, identifier)
-        self.uuid: str = str(uuid4())
         self.datatype = datatype
 
         sources = source if isinstance(source, list) else [source]

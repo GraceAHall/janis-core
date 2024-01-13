@@ -8,9 +8,13 @@ from janis_core import CodeTool, CommandToolBuilder, WorkflowBase, WorkflowBuild
 from janis_core import Tool
 from janis_core.utils import lowercase_dictkeys
 from janis_core.translation_deps.supportedtranslations import SupportedTranslation
-from janis_core.translations.common import to_builders
-from janis_core.translations.common import prune_workflow
-from janis_core.translations.common import wrap_tool_in_workflow
+
+from janis_core.modifications import to_builders
+from janis_core.modifications import ensure_containers
+from janis_core.modifications import simplify
+from janis_core.modifications import refactor_symbols
+from janis_core.modifications import wrap_tool_in_workflow
+
 from .translationbase import TranslatorBase
 
 
@@ -51,13 +55,16 @@ def translate(
 
 ) -> Any:  
     
-    # settings 
+    # configure settings 
     settings.translate.DEST = dest_fmt             # set translate dest
     settings.validation.STRICT_IDENTIFIERS = False
     settings.validation.VALIDATE_STRINGFORMATTERS = False
     
     if mode is not None:
         settings.translate.MODE = mode
+    if as_workflow is not None:
+        settings.translate.AS_WORKFLOW = as_workflow
+
     if export_path:
         settings.translate.EXPORT_PATH = export_path
         settings.translate.TO_DISK = True
@@ -100,18 +107,32 @@ def translate(
     if max_mem is not None:
         settings.translate.MAX_MEM = max_mem
 
-    # preprocessing
-    entity = to_builders(entity)
+    # in-place modifications
+    entity = perform_modifications(entity)
+
+    # translation
+    return do_translation(entity)
+
+def perform_modifications(entity: Tool) -> Tool:
+    entity = to_builders(entity)  # convert CommandTool -> CommandToolBuilder etc
+    entity = ensure_containers(entity)  # ensure containers for each tool
+    entity = refactor_symbols(entity)
+
+    # simplify workflow (if required)
     if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(entity, WorkflowBuilder):
         assert(isinstance(entity, WorkflowBuilder))
-        prune_workflow(entity)
-
-    if as_workflow and isinstance(entity, CommandToolBuilder):
+        simplify(entity)
+    
+    # wrap tool in workflow (if required)
+    if settings.translate.AS_WORKFLOW and isinstance(entity, CommandToolBuilder):
         entity = wrap_tool_in_workflow(entity)
+    
+    return entity
 
+def do_translation(entity: Tool) -> Any:
     # select the translation unit 
-    translator = get_translator(dest_fmt)
-
+    translator = get_translator(settings.translate.DEST)
+    
     # do translation 
     if isinstance(entity, WorkflowBuilder):
         return translator.translate_workflow(entity)
@@ -122,7 +143,7 @@ def translate(
     else:
         name = entity.__name__ if isclass(entity) else entity.__class__.__name__
         raise Exception("Unsupported tool type: " + name)
-
+    
 def get_translator(translation: str | SupportedTranslation) -> TranslatorBase:
     if not isinstance(translation, SupportedTranslation):
         translation = SupportedTranslation(translation)

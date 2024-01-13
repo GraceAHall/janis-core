@@ -1,0 +1,4 @@
+source_file: 
+  class: File
+  path: wc.cwl
+target_file: 'wc2.cwl'

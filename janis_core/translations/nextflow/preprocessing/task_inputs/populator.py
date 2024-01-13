@@ -10,10 +10,10 @@ from janis_core import WorkflowBuilder, Tool, CodeTool, PythonTool, CommandToolB
 from janis_core.types import File
 from janis_core import settings
 
-from ....common import TaskInputCollector
 from ... import params
 from ... import naming
 from ... import task_inputs 
+from .history import TaskInputCollector
 from .common import get_true_workflow_inputs
 
 

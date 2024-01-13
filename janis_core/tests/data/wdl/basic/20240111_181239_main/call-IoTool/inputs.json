@@ -1,0 +1,15 @@
+{
+  "inBool": true,
+  "inFile": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/aln.sorted.bam",
+  "inFileArr": [
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/mutant_R1.fastq",
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wildtype.fna"
+  ],
+  "inFileOpt": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/test.txt",
+  "inFilePath": "hello",
+  "inInt": 2,
+  "inSecondary": {
+    "bai": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/aln.sorted.bam.bai",
+    "bam": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/aln.sorted.bam"
+  }
+}

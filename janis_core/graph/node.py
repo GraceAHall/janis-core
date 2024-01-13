@@ -6,6 +6,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Dict, List, Tuple, Any
+from uuid import uuid4
 
 from janis_core.tool.tool import TInput, TOutput
 
@@ -50,7 +51,7 @@ class Node(object):
     _N_nodeId_map: Dict[int, Any] = {}
 
     def __init__(self, wf, node_type: NodeType, identifier: NodeLabel, depth=0):
-
+        self.uuid: str = str(uuid4())
         self.wf = wf
         self.node_type: NodeType = node_type
         self.identifier: NodeLabel = identifier

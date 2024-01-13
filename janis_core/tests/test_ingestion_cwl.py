@@ -129,6 +129,21 @@ class TestBasicFunctionality(unittest.TestCase):
         self.assertEqual(len(tool._arguments), 1)
         self.assertEqual(len(tool._outputs), 1)
 
+    def test_tool_cutadapt_paired(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/cutadapt-paired.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTParser(cwl_utils=cwl_utils, clt=clt, entity=clt)
+        tool = parser.parse()
+        
+        self.assertEqual(tool.id(), 'cutadapt_paired')
+        self.assertEqual(tool._base_command, 'cutadapt')
+        self.assertEqual(tool._container, 'quay.io/biocontainers/cutadapt:3.7--py39hbf8eff0_1')
+        self.assertEqual(len(tool._inputs), 4)
+        tinp = [x for x in tool._inputs if x.id() == 'reads_1'][0]
+        self.assertEqual(tinp.position, 3)
+        self.assertEqual(len(tool._arguments), 3)
+        self.assertEqual(len(tool._outputs), 3)
+
 
 class TestExtendedFunctionality(unittest.TestCase):
 
@@ -186,6 +201,48 @@ class TestRequirementsParsing(unittest.TestCase):
     def setUp(self) -> None:
         _do_setup()
 
+    def test_containers_none1(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/echo.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertIsNone(actual_reqs['container'])
+    
+    def test_containers_supplied(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/fastqc.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertEqual(actual_reqs['container'], 'quay.io/biocontainers/fastqc:0.11.9--hdfd78af_1')
+    
+    def test_containers_single_softpkg_dict(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/requirements/BWA-Mem2-index2.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertEqual(actual_reqs['container'], 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5')
+
+    def test_containers_single_softpkg_list(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/requirements/BWA-Mem2-index3.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertEqual(actual_reqs['container'], 'quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5')
+    
+    def test_containers_single_softpkg_multiversions1(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/fastqc2.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertEqual(actual_reqs['container'], 'quay.io/biocontainers/fastqc:0.11.9--hdfd78af_1')
+    
+    def test_containers_single_softpkg_multiversions2(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/requirements/protein_chunker.cwl'
+        clt, cwl_utils = _load_cwl_doc(filepath)
+        parser = CLTRequirementsParser(cwl_utils=cwl_utils, clt=clt, entity=clt, tool_uuid='test')
+        actual_reqs = parser.parse()
+        self.assertEqual(actual_reqs['container'], 'quay.io/biocontainers/biopython:1.69--np112py27_0')
+    
     def test_hints(self):
         filepath = f'{CWL_TESTDATA_DIR}/tools/requirements/bedgraph_sort.cwl'
         clt, cwl_utils = _load_cwl_doc(filepath)
@@ -235,7 +292,7 @@ class TestRequirementsParsing(unittest.TestCase):
         self.assertIn('setup_vars.sh', reqs['files_to_create'])
         self.assertIn('export AA_DATA_REPO', reqs['files_to_create']['setup_vars.sh'])
         msgs = load_loglines(entity_uuids=set(['test']))
-        self.assertEqual(len(msgs), 1)
+        self.assertEqual(len(msgs), 0)
 
     @unittest.skip('how does this work for janis?')
     def test_files_to_create_selector(self):

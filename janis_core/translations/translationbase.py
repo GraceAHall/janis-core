@@ -111,14 +111,7 @@ class TranslatorBase(ABC):
 
     # this must be implemented in the inheriting class if you want to change the 
     # output directory structure. defaults seen below. 
-    OUTDIR_STRUCTURE: dict[str, str | None] = {
-        'main': None,
-        'subworkflows': 'subworkflows',
-        'tools': 'tools',
-        'inputs': None,
-        'helpers': 'files',
-        'resources': None,
-    }
+    OUTDIR_STRUCTURE: dict[str, str | None] = {}
 
     def __init__(self, name: str):
         self.name: str = name                           # translation destination

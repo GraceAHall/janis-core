@@ -1,0 +1,1 @@
+pushd /home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic && miniwdl run io_wf.wdl -i io_wf.json; popd

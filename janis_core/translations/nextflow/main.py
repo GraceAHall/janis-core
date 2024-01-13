@@ -69,14 +69,11 @@ def _do_get_workflow(workflow_id: str, wf: WorkflowBuilder) -> Optional[Workflow
 
 
 class NextflowTranslator(TranslatorBase):
-    
+
     OUTDIR_STRUCTURE: dict[str, str | None] = {
-        'main': None,
         'subworkflows': 'subworkflows',
         'tools': 'modules',
-        'inputs': None,
         'helpers': 'templates',
-        'resources': None,
     }
 
     def __init__(self):

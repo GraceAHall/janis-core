@@ -1,0 +1,13 @@
+{
+  "IoTool.outFile": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outFile/aln.sorted.bam",
+  "IoTool.outFileArr": [
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outFileArr/0/mutant_R1.fastq",
+    "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outFileArr/1/wildtype.fna"
+  ],
+  "IoTool.outFileOpt": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outFileOpt/test.txt",
+  "IoTool.outSecondary": {
+    "bai": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outSecondary/bai/aln.sorted.bam.bai",
+    "bam": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outSecondary/bam/aln.sorted.bam"
+  },
+  "IoTool.outStdout": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240111_181310_main/call-IoTool/out/outStdout/stdout.txt"
+}

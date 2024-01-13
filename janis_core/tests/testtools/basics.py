@@ -9,7 +9,8 @@ from janis_core import (
     ToolArgument,
     WildcardSelector,
     InputSelector,
-    IndexOperator
+    IndexOperator,
+    BasenameOperator
 )
 
 from janis_core.types import (
@@ -170,6 +171,29 @@ class ComponentsMandatoryTestTool(CommandTool):
             ToolInput("opt_basic", String, position=6, prefix="--opt-basic"),
             ToolInput("opt_default", Int, position=7, default=5, prefix="--opt-default"),
             ToolInput("opt_optional", String(optional=True), position=8, prefix="--opt-optional"),
+        ]
+
+    def outputs(self):
+        return [ToolOutput("out", Stdout)]
+
+    def container(self) -> str:
+        return "ubuntu:latest"
+
+    def version(self) -> str:
+        return "TEST"
+
+
+class ToolInputDefaultExpressionTestTool(CommandTool):
+    def tool(self) -> str:
+        return "ToolInputDefaultExpressionTestTool"
+
+    def base_command(self) -> Optional[str | list[str]]:
+        return "echo"
+
+    def inputs(self) -> list[ToolInput]:
+        return [
+            ToolInput("in_file", File, position=1),
+            ToolInput("in_filename", String, position=2, default=BasenameOperator(InputSelector("in_file"))),
         ]
 
     def outputs(self):

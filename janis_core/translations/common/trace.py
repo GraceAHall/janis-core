@@ -11,38 +11,39 @@ from janis_core.types import Filename, DataType, Stdout
 
 from janis_core.operators import SingleValueOperator, TwoValueOperator
 
-from janis_core.operators.logical import (
-    IsDefined,
-    If,
-    AssertNotNull,
-    FloorOperator,
-    CeilOperator,
-    RoundOperator,
-)
+# from janis_core.operators.logical import (
+#     IsDefined,
+#     If,
+#     AssertNotNull,
+#     FloorOperator,
+#     CeilOperator,
+#     RoundOperator,
+#     GroupOperator,
+# )
 
-from janis_core.operators.standard import (
-    ReadContents,
-    ReadJsonOperator,
-    JoinOperator,
-    BasenameOperator,
-    NamerootOperator,
-    NameextOperator,
-    TransposeOperator,
-    LengthOperator,
-    RangeOperator,
-    FlattenOperator,
-    ApplyPrefixOperator,
-    FileSizeOperator,
-    FirstOperator,
-    FilterNullOperator,
-    ReplaceOperator,
-)
+# from janis_core.operators.standard import (
+#     ReadContents,
+#     ReadJsonOperator,
+#     JoinOperator,
+#     BasenameOperator,
+#     NamerootOperator,
+#     NameextOperator,
+#     TransposeOperator,
+#     LengthOperator,
+#     RangeOperator,
+#     FlattenOperator,
+#     ApplyPrefixOperator,
+#     FileSizeOperator,
+#     FirstOperator,
+#     FilterNullOperator,
+#     ReplaceOperator,
+# )
 from janis_core.operators.operator import (
     IndexOperator,
-    AsStringOperator,
-    AsBoolOperator,
-    AsIntOperator,
-    AsFloatOperator,
+    # AsStringOperator,
+    # AsBoolOperator,
+    # AsIntOperator,
+    # AsFloatOperator,
 )
 from janis_core.operators.selectors import (
     InputNodeSelector, 
@@ -123,37 +124,38 @@ class Tracer(ABC):
     
     def __init__(self, tool: Optional[Tool]=None):
         self.tool = tool
-        self.single_arg_trace_types = {
-            IsDefined,
-            AssertNotNull,
-            FloorOperator,
-            CeilOperator,
-            RoundOperator,
-            AsStringOperator,
-            AsBoolOperator,
-            AsIntOperator,
-            AsFloatOperator,
-            ReadContents,
-            ReadJsonOperator,
-            BasenameOperator,
-            NamerootOperator,
-            NameextOperator,
-            TransposeOperator,
-            LengthOperator,
-            RangeOperator,
-            FlattenOperator,
-            FileSizeOperator,
-            FirstOperator,
-            FilterNullOperator,
-        }
+        # self.single_arg_trace_types = {
+        #     IsDefined,
+        #     AssertNotNull,
+        #     FloorOperator,
+        #     CeilOperator,
+        #     RoundOperator,
+        #     AsStringOperator,
+        #     AsBoolOperator,
+        #     AsIntOperator,
+        #     AsFloatOperator,
+        #     ReadContents,
+        #     ReadJsonOperator,
+        #     BasenameOperator,
+        #     NamerootOperator,
+        #     NameextOperator,
+        #     TransposeOperator,
+        #     LengthOperator,
+        #     RangeOperator,
+        #     FlattenOperator,
+        #     FileSizeOperator,
+        #     FirstOperator,
+        #     FilterNullOperator,
+        #     GroupOperator,
+        # }
 
-        self.multi_arg_trace_types = {
-            If,
-            IndexOperator,
-            JoinOperator,
-            ApplyPrefixOperator,
-            ReplaceOperator,
-        }
+        # self.multi_arg_trace_types = {
+        #     If,
+        #     IndexOperator,
+        #     JoinOperator,
+        #     ApplyPrefixOperator,
+        #     ReplaceOperator,
+        # }
 
         self.custom_trace_funcs = {
             # primitives
@@ -163,7 +165,9 @@ class Tracer(ABC):
             Filename: self.filename,
 
             # selectors
+            InputNode: self.workflow_input,
             ToolInput: self.tool_input,
+            ToolOutput: self.tool_output,
             ToolArgument: self.tool_argument,
             AliasSelector: self.alias_selector,
             InputNodeSelector: self.input_node_selector,
@@ -179,7 +183,6 @@ class Tracer(ABC):
             StepTagInput: self.step_tag_input,
             Edge: self.edge,
             StringFormatter: self.string_formatter,
-            # InputNode: self.input_node,
         }
 
     @abstractmethod
@@ -192,36 +195,49 @@ class Tracer(ABC):
         if etype in self.custom_trace_funcs:
             func = self.custom_trace_funcs[etype]
             func(entity)
-        
-        elif isinstance(entity, SingleValueOperator):
-            self.operator_single_arg_trace(entity)
-        
-        elif isinstance(entity, TwoValueOperator):
-            self.operator_multi_arg_trace(entity)
-        
-        elif etype in self.single_arg_trace_types:
-            self.operator_single_arg_trace(entity)
-        
-        elif etype in self.multi_arg_trace_types:
-            self.operator_multi_arg_trace(entity)
+
+        elif isinstance(entity, Operator):
+            for arg in entity.args:
+                self.trace(arg)  
         
         else:
             pass
+        
+        # elif isinstance(entity, TwoValueOperator):
+        #     self.operator_multi_arg_trace(entity)
+        
+        # elif etype in self.multi_arg_trace_types:
+        #     self.operator_multi_arg_trace(entity)
+        
+        # elif isinstance(entity, SingleValueOperator):
+        #     self.operator_single_arg_trace(entity)
+        
+        # elif etype in self.single_arg_trace_types:
+        #     self.operator_single_arg_trace(entity)
+        
+        # else:
+        #     pass
 
-    def operator_single_arg_trace(self, entity: Operator) -> None:
-        self.trace(entity.args[0])
+    # def operator_single_arg_trace(self, entity: Operator) -> None:
+    #     self.trace(entity.args[0])
     
-    def operator_multi_arg_trace(self, entity: Operator) -> None:
-        for arg in entity.args:
-            self.trace(arg)
+    # def operator_multi_arg_trace(self, entity: Operator) -> None:
+    #     for arg in entity.args:
+    #         self.trace(arg)
 
     def trace_list(self, entity: list[Any]) -> None:
         for item in entity:
             self.trace(item)
+    
+    def workflow_input(self, entity: InputNode) -> None:
+        if entity.default is not None:
+            self.trace(entity.default)
             
     def tool_input(self, entity: ToolInput | TInput) -> None:
         # the toolinput name
         self.trace(entity.id())
+        if entity.default is not None:
+            self.trace(entity.default)
         dtype = entity.input_type if isinstance(entity, ToolInput) else entity.intype
         # the datatype if it is a Filename type
         if isinstance(dtype, Filename):

@@ -284,7 +284,7 @@ class TwoValueOperator(Operator, ABC):
 
     def to_wdl(self, unwrap_operator, *args):
         arg1, arg2 = [unwrap_operator(a) for a in self.args]
-        return f"({arg1} {self.wdl_symbol()} {arg2})"
+        return f"{arg1} {self.wdl_symbol()} {arg2}"
 
     def to_cwl(self, unwrap_operator, *args):
         arg1, arg2 = [unwrap_operator(a) for a in self.args]

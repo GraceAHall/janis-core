@@ -1,0 +1,22 @@
+{
+  "error": "RunFailed",
+  "workflow": "main",
+  "run": "main",
+  "dir": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175303_main",
+  "cause": {
+    "error": "DockerException",
+    "message": "Error while fetching server API version: ('Connection aborted.', FileNotFoundError(2, 'No such file or directory'))",
+    "run": "call-IoTool",
+    "dir": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/20240108_175303_main/call-IoTool",
+    "pos": {
+      "source": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/io_tool.wdl",
+      "line": 3,
+      "column": 1
+    }
+  },
+  "pos": {
+    "source": "/home/grace/work/pp/translation/janis-core/janis_core/tests/data/wdl/basic/io_wf.wdl",
+    "line": 6,
+    "column": 1
+  }
+}

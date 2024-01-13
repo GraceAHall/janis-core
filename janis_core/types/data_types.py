@@ -271,7 +271,9 @@ class DataType(ABC):
         return None
 
     def _question_mark_if_optional(self, has_default: bool = False):
-        return "?" if self.optional or has_default else ""
+        if self.__class__.__name__ == "Boolean":
+            return ""
+        return "?" if self.optional and not has_default else ""
 
     def cwl_type(
         self, has_default=False
@@ -298,7 +300,9 @@ class DataType(ABC):
 
     def wdl(self, has_default=False) -> wdlgen.WdlType:
         qm = self._question_mark_if_optional(has_default)
-        return wdlgen.WdlType.parse_type(NativeTypes.map_to_wdl(self.primitive()) + qm)
+        wdlstr = NativeTypes.map_to_wdl(self.primitive()) + qm
+        wdltype = wdlgen.WdlType.parse_type(wdlstr, has_default=has_default)
+        return wdltype
 
     def parse_value(self, valuetoparse):
         """

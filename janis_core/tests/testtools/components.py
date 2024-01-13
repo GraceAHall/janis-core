@@ -135,7 +135,7 @@ class ComponentsOptionalArrayTestTool(CommandTool):
             # ToolInput("flag_false", Array(Boolean), position=5, prefix="--flag-false", default=False),
             
             ToolInput("pos_optional_arr", Array(File, optional=True), position=1),
-            ToolInput("opt_optional_arr", Array(String, optional=True), position=2, prefix="--opt-optional-arr"),
+            ToolInput("opt_optional_arr", Array(String, optional=True), position=2, default=['hi', 'there'], prefix="--opt-optional-arr"),
             ToolInput(
                 "opt_optional_arr_prefixeach", 
                 Array(String, optional=True), 

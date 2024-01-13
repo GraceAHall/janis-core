@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from functools import cached_property
 
-from janis_core import ToolInput, ToolArgument, ToolOutput, WildcardSelector, CommandToolBuilder, CommandTool, Selector
+from janis_core.ingestion.common import fetch_container_for_packages
+from janis_core import ToolInput, ToolArgument, ToolOutput, WildcardSelector, CommandToolBuilder, Selector, InputSelector
 from janis_core.types import File, Stdout, Stderr, Directory, DataType
 from janis_core import settings
 from janis_core.messages import log_message
@@ -42,7 +43,7 @@ class CLTParser:
         
         return j_entity
 
-    def fallback(self) -> CommandTool:
+    def fallback(self) -> CommandToolBuilder:
         # inputs, arguments, outputs, requirements have fallbacks. 
         # error must have occured with other clt fields (io streams, base command, doc etc). 
         
@@ -97,7 +98,7 @@ class CLTParser:
         jtool._disk = reqs['disk']
         return jtool
 
-    def do_parse(self) -> CommandTool:
+    def do_parse(self) -> CommandToolBuilder:
         identifier = get_id_filename(self.entity.id)
         jtool = CommandToolBuilder(
             tool=identifier,
@@ -113,14 +114,19 @@ class CLTParser:
         # this must be set for error messages to be associated with this entity
         self.tool_uuid = jtool.uuid
 
+        # parse inputs, outputs, arguments
         inputs = [self.ingest_command_tool_input(inp) for inp in self.entity.inputs]
         outputs = [self.ingest_command_tool_output(out) for out in self.entity.outputs]
         arguments = [self.ingest_command_tool_argument(arg) for arg in (self.entity.arguments or [])]
         
+        # remove failed entity parses
         inputs = [inp for inp in inputs if inp is not None]
         outputs = [out for out in outputs if out is not None]
         arguments = [arg for arg in arguments if arg is not None]
-
+        
+        # give inputs a position if CWL didn't define one
+        inputs = self.handle_null_position_inputs(inputs, arguments)
+        
         jtool._inputs = inputs
         jtool._outputs = outputs
         jtool._arguments = arguments
@@ -167,7 +173,19 @@ class CLTParser:
         parser = CLTOutputParser(cwl_utils=self.cwl_utils, clt=self.clt, entity=out, tool_uuid=self.tool_uuid)
         return parser.parse()
     
-    def ingest_io_streams(self, entity: Any, jtool: CommandTool) -> list[ToolArgument]:
+    def handle_null_position_inputs(self, inputs: list[ToolInput], arguments: list[ToolArgument]) -> list[ToolInput]:
+        inp_positions = [inp.position for inp in inputs if inp.position is not None]
+        arg_positions = [arg.position for arg in arguments if arg.position is not None]
+        max_inp_pos = max(inp_positions) if inp_positions else 0
+        max_arg_pos = max(arg_positions) if arg_positions else 0
+        max_pos = max(max_inp_pos, max_arg_pos)
+        for inp in inputs:
+            if inp.position is None:
+                max_pos += 1
+                inp.position = max_pos
+        return inputs
+    
+    def ingest_io_streams(self, entity: Any, jtool: CommandToolBuilder) -> list[ToolArgument]:
         out: list[ToolArgument] = []
 
         # n = last position for clt inputs / arguments
@@ -220,17 +238,17 @@ class CLTParser:
                 return True
         return False
     
-    def apply_collection_to_stderr_types(self, filename: str, jtool: CommandTool) -> None: 
+    def apply_collection_to_stderr_types(self, filename: str, jtool: CommandToolBuilder) -> None: 
         for out in jtool.outputs():
             if isinstance(out.output_type, Stderr):
                 out.selector = WildcardSelector(filename)
     
-    def apply_collection_to_stdout_types(self, filename: str, jtool: CommandTool) -> None: 
+    def apply_collection_to_stdout_types(self, filename: str, jtool: CommandToolBuilder) -> None: 
         for out in jtool.outputs():
             if isinstance(out.output_type, Stdout):
                 out.selector = WildcardSelector(filename)
 
-    def get_last_input_position(self, jtool: CommandTool) -> int:
+    def get_last_input_position(self, jtool: CommandToolBuilder) -> int:
         max_pos = 0
         inputs: list[ToolInput | ToolArgument] = copy.deepcopy(jtool.inputs())
         if jtool.arguments():
@@ -335,19 +353,64 @@ class CLTRequirementsParser(CLTEntityParser):
                             exprlib = f'$({exprlib})'
                         res, success = parse_expression(exprlib, self.tool_uuid)
 
-    def get_container(self, reqs: list[Any], hints: list[Any]) -> str:
-        fallback = 'ubuntu:latest'
+    def get_container(self, reqs: list[Any], hints: list[Any]) -> Optional[str]:
         if self.is_expression_tool:
             return 'node:latest'
-        else:
-            for req in reqs:
-                if isinstance(req, self.cwl_utils.DockerRequirement):
-                    return req.dockerPull
-            for hint in hints:
-                if 'class' in hint and hint['class'] == 'DockerRequirement':
-                    return hint['dockerPull']
-        return fallback
+        
+        # try to get container from requirements
+        for req in reqs:
+            if isinstance(req, self.cwl_utils.DockerRequirement):
+                return req.dockerPull
+        for hint in hints:
+            if 'class' in hint and hint['class'] == 'DockerRequirement':
+                return hint['dockerPull']
+            
+        # collect software packages and fetch a container online
+        packages = []
+        
+        for req in reqs:
+            if isinstance(req, self.cwl_utils.SoftwareRequirement):
+                packages += self._pull_package_info(req.packages)
+                
+        for hint in hints:
+            if 'class' in hint and hint['class'] == 'SoftwareRequirement':
+                packages += self._pull_package_info(hint['packages'])
+                
+        return fetch_container_for_packages(packages)
     
+    def _pull_package_info(self, softreqs: Any) -> list[Tuple[str, str]]:
+        if len(softreqs) == 0:
+            return []
+        
+        # standardise format to list
+        if isinstance(softreqs, dict):
+            softreqs = [{'package': k, 'version': v['version']} for k, v in softreqs.items()]
+
+        # standardise items to tuples
+        if isinstance(softreqs[0], dict):
+            softreqs = [(req['package'], req['version']) for req in softreqs]
+        elif isinstance(softreqs[0], self.cwl_utils.SoftwarePackage):
+            softreqs = [(req.package, req.version) for req in softreqs]
+        else:
+            raise NotImplementedError
+
+        # select most recent version
+        out: list[Tuple[str, str]] = []
+        for name, versions in softreqs:
+            if len(versions) == 1:
+                out.append((name, versions[0]))
+            else:
+                if all([isinstance(x, float) for x in versions]):
+                    version = max(versions)
+                elif all([isinstance(x, int) for x in versions]):
+                    version = max(versions)
+                elif all([isinstance(x, str) for x in versions]):
+                    version = max(versions)
+                else:
+                    raise NotImplementedError
+                out.append((name, version))
+        return out
+
     def get_memory(self, reqs: list[Any], hints: list[Any]) -> Optional[int]:
         for req in reqs:
             if isinstance(req, self.cwl_utils.ResourceRequirement):
@@ -510,6 +573,7 @@ class InitialWorkDirRequirementParser:
     def do_parse(self) -> None:
         success = False
         parsers = [
+            self.parse_as_ignoreable,
             self.parse_as_textfile,
             self.parse_as_directory_path,
             # self.parse_as_selector,
@@ -563,6 +627,12 @@ class InitialWorkDirRequirementParser:
             return True
         return False
     
+    def parse_as_ignoreable(self) -> bool:
+        if self.r_name_ok and self.r_name is None:
+            if self.r_value_ok and isinstance(self.r_value, InputSelector):
+                return True
+        return False
+
     def parse_as_textfile(self) -> bool:
         fname_pattern = r'[a-zA-Z0-9_-]+\.(sh|py|r|R|rscript|Rscript|bash|txt|config|csv|tsv|json|yml|yaml|xml|html)'
         # must be dirent
@@ -681,7 +751,7 @@ class CLTArgumentParser(CLTEntityParser):
                 return None
             arg = ToolArgument(
                 value=res,
-                position=self.entity.position if self.entity.position else 0,
+                position=self.entity.position if self.entity.position is not None else 0,
                 prefix=self.entity.prefix,
                 separate_value_from_prefix=self.entity.separate,
                 shell_quote=self.entity.shellQuote,

@@ -1,5 +1,7 @@
 
 
+from .illegal_symbols import IllegalSymbolsTestWF
+
 from .preprocessing_prune import PruneFlatTW
 from .preprocessing_prune import PruneNestedTW
 

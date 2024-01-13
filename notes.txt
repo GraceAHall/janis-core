@@ -1,4 +1,558 @@
 
+WDL runtime tool inputs
+- only pass value in task call if genuine input
+- only create workflow inputs if genuine input
+
+WDL unwrap
+- inconsistent brackets
+  File? out_txt = if defined(testtool) then (testtool + ".txt") else None 
+
+############
+### TODO ###
+############
+
+TODO
+- simplification: removing arguments - check to not remove prefixes [check]
+- simplification: simplify outputs (espc. galaxy)       
+- containers:   implement
+- modes:        implement mode splitting to --mode and --simplification
+- WDL: optional outputs, secondaries, plumbing, basic test suite
+- release. 
+- outdir structure: README.md?
+- figure: workflow results
+- figure: sample translation +outdir (best practices)
+- figure: features (messages, --mode and --simplification)
+
+CONTAINERS 
+- fix galaxy
+- ensure containers using quay.io?
+- ensure containers using docker.io?
+- keep registry locally?
+
+SIMPLIFICATION 
+- change CLI
+- add aggressive mode
+
+BEST PRACTISES
+- licence / attributions
+- adhere to style guides
+    - outdir structure*
+    - tool / workflow structure (inputs then outputs etc)
+    - metadata
+- env configurations / execution templates?
+    - WDL example: https://workflowhub.eu/workflows/410
+
+PLUMBING
+- make airtight / absolutely correct.
+- follow style guides (optionality, value evaluation, data structures, data movement)
+
+
+
+
+##########################
+### CWL Best Practises ###
+##########################
+
+sources: 
+- bio-cwl-tools
+- https://workflowhub.eu/workflows/278
+- https://workflowhub.eu/workflows/384
+
+directory structure
+- scripts/
+- subworkflows/
+- tests/
+- tools/
+- utils/?         (for utilities. generally replaces expressions)
+- workflow.cwl        (main)
+- workflow-inp.yml    (inputs)
+- README.md
+
+naming conventions
+- tool / workflow files:    hypenated-names.cwl 
+- config files:             hypenated-names.yml 
+- variables:                snake_case 
+
+Entities:
+- yaml format. two-space indent. 
+- workflows: inputs, outputs, steps, meta 
+- tools: single software command 
+- tools: 
+    - cwlVersion 
+    - requirements
+    - hints
+    - baseCommand
+    - arguments
+    - stdout/stderr
+    - inputs
+    - outputs
+    - meta (namespaces, schemas, s:name, s:licence, s:creator, doc)
+
+(https://www.commonwl.org/user_guide)
+
+Expressions
+- only when absolutely necessary
+
+Types
+- No  "type: string" parameters for names of input or reference files/directories; 
+  use "type: File" or "type: Directory" as appropriate.
+- "format" should be specified for all input and output File types (use EDAM)  
+- Mark all input and output Files that are read from or written to in a streaming compatible way (only once, no random-access), as streamable: true.
+- Each CommandLineTool description should focus on a single operation only, even if the (sub)command is capable of more. Don’t overcomplicate your tool descriptions with options that you don’t need or use.
+
+Metadata 
+- FAIR!
+- Include a top-level short label summarising the tool/workflow.
+- If useful, include a top-level doc as well. This should provide a longer, more detailed description than was provided in the top-level label (see above).
+- Use type: enum instead of type: string for elements with a fixed list of valid values.
+- Include attribution information for the author(s) of the CWL tool or workflow description
+- In tool descriptions, list dependencies using short name(s) under SoftwareRequirement.
+- Include SciCrunch identifiers for dependencies in https://identifiers.org/rrid/RRID:SCR_NNNNNN format.
+
+```
+s:author:
+  - class: s:Person
+    s:identifier: https://orcid.org/0000-0002-6130-1021
+    s:email: mailto:dyuen@oicr.on.ca
+    s:name: Denis Yuen
+
+s:contributor:
+  - class: s:Person
+    s:identifier: http://orcid.org/0000-0002-7681-6415
+    s:email: mailto:briandoconnor@gmail.com
+    s:name: Brian O'Connor
+
+s:citation: https://dx.doi.org/10.6084/m9.figshare.3115156.v2
+s:codeRepository: https://github.com/common-workflow-language/common-workflow-language
+s:dateCreated: "2016-12-13"
+s:license: https://spdx.org/licenses/Apache-2.0
+
+$namespaces:
+  s: https://schema.org/
+  edam: http://edamontology.org/
+
+$schemas:
+  - https://schema.org/version/latest/schemaorg-current-https.rdf
+  - http://edamontology.org/EDAM_1.18.owl
+```
+
+This is renaming an input file!
+```
+requirements:
+  InitialWorkDirRequirement:
+    listing:
+      - entry: $(inputs.src1)
+        entryName: newName
+      - entry: $(inputs.src2)
+        entryName: $(inputs.src1.basename)_custom_extension
+```
+
+This is renaming an output file!
+```
+inputs:
+  otu_table_name: string
+
+outputs:
+ otu_table:
+    type: File
+    outputBinding:
+      glob: otu_table.txt
+      outputEval: ${self[0].basename=inputs.otu_table_name; return self;}
+```
+
+This is CWL equivalent of ternary!
+```
+inputs:
+  fancy_bool:
+     type: boolean
+     default: false  # or true
+     inputBinding:
+        valueFrom: ${if (self) { return "foo";} else { return "bar";}}
+```
+
+
+
+##########################
+### WDL Best Practises ###
+##########################
+
+sources: 
+- https://biowdl.github.io/styleGuidelines.html
+- https://workflowhub.eu/workflows/410
+- https://workflowhub.eu/workflows/335
+
+directory structure:
+- scripts/
+- structs/ 
+- subworkflows/
+- tasks/
+- tests/
+- main.json
+- main.wdl
+- README.md
+
+Indentation:
+- Anything within a set of braces {}.
+- Inputs following input: in a call block.
+- Continuations of expressions which did no fit on a single line, see section 4.
+- Indentations should be 4 space characters ( ) per level of indentation. 
+- Closing braces should use the same level as indentation as their opening braces.
+- Do not use a tab character. 
+
+Blank lines: Different blocks (code surrounded by {} or <<<>>>) should be separated by a single blank line.
+
+Line length: like 80 chars. 
+
+Naming: 
+- All imports and calls should be named using the "as" syntax.
+- Files: snake_case.wdl
+- Tasks: UpperCamelCase
+- Workflows: UpperCamelCase
+- Structs: UpperCamelCase
+- Calls: lowerCamelCase
+- Variables: lowerCamelCase
+- Inputs: see the notes below
+- Imports: lowerCamelCase
+
+Task Command:
+- Each option in a bash command should be on a new line. (end lines with '\')
+- All bash commands should start with `set -e -o pipefail` if more than one bash command gets executed in the task.
+- The ~{...} placeholder syntax should be used in all cases, rather than the ${...} syntax.
+
+Task General:
+- It is highly advised that a parameter_meta section is defined, containing descriptions of both the inputs and output of the task.
+- Imports should be placed in alphabetical order at the top of the file. All imports must be named using the as syntax.
+
+Authorship metadata
+    meta {
+        author:  ""
+        email: ""
+        description: ""    
+    }
+
+
+
+##########################
+### NXF Best Practises ###
+##########################
+
+sources:
+- https://carpentries-incubator.github.io/Pipeline_Training_with_Nextflow/07-Nextflow_Best_Practice/index.html
+- https://workflowhub.eu/workflows/683
+- https://workflowhub.eu/workflows/654
+- https://workflowhub.eu/workflows/667
+- https://workflowhub.eu/workflows/402
+
+directory structure:
+- modules/ 
+- subworkflows/
+- templates/
+- main.nf
+- nextflow.config 
+- README.md
+
+process NAME {
+    tag         "$samplesheet"
+    label       "process_single"
+    container   "ubuntu:latest"
+    cpus        "2"
+    memory      "4 GB"
+    time        "10m"
+    publishDir  "${params.outputs}/name"
+    storeDir    params.STOREDIR ??? 
+
+    input: 
+    path inp1
+    tuple val(meta), val(ftp_path), val(remote_filename_stem)
+
+    output: 
+    path "out1.txt",                emit: out1
+    path "out-secondary.txt",       emit: out1
+    tuple val(meta), path("*.fa"),  emit: fasta
+    path  "versions.yml",           emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when ???
+
+}
+
+HPC execution 
+- in nextflow.config 
+    ```
+    export NFX_OPTS="-Xms=512m -Xmx=8g" // JVM max heap size, but what for? 
+    process.opts??
+    process.executor  = 'slurm'
+    process.queue     = 'myqueue'
+    ```
+- in process definition
+    ```
+    process MY_PROCESS {
+        executor = 'slurm'
+        queue = 'general'
+        cpus = 2
+        memory = '4 GB'
+        time = '10m'
+    }
+    ```
+
+Metadata 
+- metadata should be embedded with everything? 
+- use "manifest" variable within nextflow.config
+    ```
+    manifest {
+        author = "me"
+        version = "1.0.0"
+    }
+    
+    params.manifest=manifest  # so can access this shit in processes / workflows 
+    ```
+- process execution metadata logging 
+    ```
+    log.info """\
+            ${params.manifest.name} v${params.manifest.version}
+            ==========================
+            input from   : ${params.input_file}
+            output to    : ${params.output_dir}
+            --
+            run as       : ${workflow.commandLine}
+            started at   : ${workflow.start}
+            config files : ${workflow.configFiles}
+            container    : ${workflow.containerEngine}:${workflow.container}
+            """
+            .stripIndent()
+    ```
+    
+- workflow execution metadata to disk
+    ```
+    process final{
+    output:
+    path("metadata.txt")
+
+    script:
+    """
+    cat <<EOF > metadata.txt
+    ${params.manifest.author}
+    ${params.manifest.version}
+    ${workflow.workDir}
+    ${workflow.userName}
+    ${workflow.start}
+    """
+    }
+    ```
+
+
+nextflow.config 
+```
+/***************************
+Annotation pipeline config
+----------------------------
+Default for all environments
+****************************/
+
+
+// Software dependency management
+docker {
+    enabled = true
+    userEmulation = true
+}
+// singularity {
+//     enabled = true
+//     userEmulation = true
+// }
+
+
+// Global parameters
+params {
+	// Compulsory input
+	genome              = null
+	species             = null
+
+	// Optional input
+	protein             = null
+	rnaseq              = null
+	long_rna_bam        = null
+	short_rna_bam       = null
+	knownrepeat         = null
+
+	// Output
+	outdir              = "${launchDir}"
+	tracedir            = "${params.outdir}/pipeline_info"
+	publish_dir_mode    = 'copy'
+
+	// Funannotate
+	run_funannotate     = true
+	organism            = "other"
+	ploidy              = 2
+	buscodb             = "eukaryota"
+	buscoseed           = null // this will not be used when RNAseq data is available
+
+	// Braker
+	run_braker          = false
+
+	// Define max resource, need to be changed before running 
+	max_cores           = Runtime.runtime.availableProcessors()
+	max_memory          = '300.GB'
+    max_cpus            = 36 // or Runtime.runtime.availableProcessors()
+    max_time            = '24.h'
+
+	// Cache dir
+	tmpdir              = "${launchDir}/tmpdir"
+    condaCacheDir       = 'conda'
+    singularityCacheDir = 'singularity'
+
+	// Skipping
+	skip_rename                = false
+	skip_all_masking           = false
+	skip_denovo_masking        = false
+	skip_functional_annotation = false
+	skip_read_preprocessing    = false
+
+	// Others
+	help                = false
+	profile             = false
+}
+
+profiles {
+
+	// Executors
+	
+	local {
+		executor {
+			name = "local"
+			cpus = params.max_cores
+			memory = params.max_memory
+		}
+	}
+
+	slurm {
+        executor {
+            name = "slurm"
+		}
+		process.cache = "lenient"
+	}
+
+	// Engines
+	
+	conda {
+        conda.enabled          = true
+		conda.cacheDir         = params.condaCacheDir
+		conda.createTimeout    = '1 h'
+		singularity.enabled    = true // for BRAKER
+		apptainer.enabled      = false
+        docker.enabled         = false
+		includeConfig 'conf/conda.config'
+    }
+	mamba {
+		conda.enabled          = true
+		conda.useMamba         = true
+		conda.createTimeout    = '1 h'
+		conda.cacheDir         = params.condaCacheDir
+		singularity.enabled    = true // for BRAKER
+		apptainer.enabled      = false
+		docker.enabled         = false
+		includeConfig 'conf/conda.config'
+    }
+	docker {
+		docker.enabled         = true
+		docker.useEmulation    = true
+		conda.enabled          = false
+		singularity.enabled    = false
+		apptainer.enabled      = false
+		includeConfig 'conf/container.config'
+    }
+	singularity {
+		singularity.enabled    = true
+		singularity.autoMounts = true
+		singularity.cacheDir   = params.singularityCacheDir
+		conda.enabled          = false
+		docker.enabled         = false
+		apptainer.enabled      = false
+		includeConfig 'conf/container.config'
+    }
+	apptainer {
+        apptainer.enabled      = true
+		apptainer.cacheDir     = params.singularityCacheDir
+    	singularity.enabled    = false
+        conda.enabled          = false
+        docker.enabled         = false
+		includeConfig 'conf/container.config'
+    }
+
+	// Standard pipeline
+
+	standard {
+		executor {
+            name = "slurm"
+        }
+		singularity {
+			enabled = true
+			autoMounts = true
+			runOptions = "-B /env:/env -B /mnt:/mnt"
+			includeConfig 'conf/container.config'
+		}
+	}
+}
+
+def trace_timestamp = new java.util.Date().format('yyyy-MM-dd_HH-mm-ss')
+timeline {
+	enabled = true
+	file    = "${params.tracedir}/timeline_${trace_timestamp}.html"
+}
+report {
+	enabled = true
+	file    = "${params.tracedir}/report_${trace_timestamp}.html"
+}
+trace {
+	enabled = true
+	file    = "${params.tracedir}/trace_${trace_timestamp}.txt"
+}
+dag {
+	enabled = true
+	file    = "${params.tracedir}/dag_${trace_timestamp}.html"
+}
+
+manifest {
+	name            = 'AnnoTATO'
+	author          = """Genoscope"""
+	description     = """Annotation pipeline To Annotate Them Oll"""
+	mainScript      = 'main.nf'
+	nextflowVersion = '!>=23.04.0'
+	version         = '0.0.1'
+}
+
+process {
+
+    cpus   = { check_max( 1    * task.attempt, 'cpus'   ) }
+    memory = { check_max( 6.GB * task.attempt, 'memory' ) }
+    time   = { check_max( 2.h  * task.attempt, 'time'   ) }
+
+    errorStrategy = { task.exitStatus in ((130..145) + 104) ? 'retry' : 'finish' }
+    maxRetries    = 3
+    maxErrors     = '-1'
+
+    withLabel:process_single {
+        cpus   = { check_max( 1                  , 'cpus'    ) }
+        memory = { check_max( 6.GB * task.attempt, 'memory'  ) }
+        time   = { check_max( 2.h  * task.attempt, 'time'    ) }
+    }
+}
+
+env {
+    PYTHONNOUSERSITE = 1
+    R_PROFILE_USER   = "/.Rprofile"
+    R_ENVIRON_USER   = "/.Renviron"
+    JULIA_DEPOT_PATH = "/usr/local/share/julia"
+}
+```
+
+
+
+
+
+
+
+
+
 errs 
 
 WDL

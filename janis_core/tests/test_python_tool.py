@@ -5,7 +5,7 @@ from janis_core.translations import CwlTranslator
 from janis_core.types import String, Boolean, Float, Int, File, Array, Filename
 from janis_core.code.pythontool import PythonTool
 from janis_core.tool.tool import TOutput, TInput
-from janis_core.translations.common import to_builders
+from janis_core.modifications import to_builders
 
 class PythonEchoTool(PythonTool):
     @staticmethod

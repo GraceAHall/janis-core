@@ -4,7 +4,7 @@ from janis_core.translations import WdlTranslator
 from janis_core.workflow.workflow import WorkflowBuilder
 
 from janis_core.redefinitions.tools import Echo, Cat
-from janis_core.translations.common import to_builders
+from janis_core.modifications import to_builders
 
 def _strip_comments(text: str) -> str:
     lines = text.split("\n")
@@ -22,6 +22,7 @@ class TestConditionals(unittest.TestCase):
         w.step("cat", Cat(file=w.echo.out), when=w.echo.out.equals("Hello, Michael"))
 
         w.output("out", source=w.echo.out)
+        w = to_builders(w)
 
         w.translate(
             "wdl"  # to_disk=True, export_path="~/Desktop/tmp/{name}", validate=True

@@ -1,13 +1,11 @@
 
 
-
-
-
-
+import regex as re 
+from typing import Any
 from abc import ABC, abstractmethod
 from janis_core import ToolInput, TInput
 from janis_core.workflow.workflow import InputNode
-
+from janis_core.types import File, String, Int, Float, Boolean, Array, Directory
 
 
 ### COMMAND TOOL INPUTS ###
@@ -18,26 +16,74 @@ class ToolInputOrderingStrategy(ABC):
         """orders input values and returns ordered list"""
         ...
 
-class AlphabeticalToolInputStrategy(ToolInputOrderingStrategy):
+class DatatypeStrategy(ToolInputOrderingStrategy):
+    priorities = {
+        'Map': 0,
+        'File': 2,
+        'String': 3,
+        'Int': 4,
+        'Float': 5,
+        'Boolean': 6,
+    }
+
+    def order(self, inputs: list[ToolInput]) -> list[ToolInput]:
+        inputs.sort(key=lambda x: self.get_priority(x))
+        return inputs
+    
+    def get_priority(self, inp: ToolInput) -> int:
+        dtype_str: str = inp.input_type.wdl().get_string()
+        dtype_str = re.sub(r'\?', '', dtype_str)
+        dtype_str = re.sub(r'\[', '', dtype_str)
+        dtype_str = re.sub(r'\]', '', dtype_str)
+        dtype_str = re.sub(r'Array', '', dtype_str)
+        
+        priority = 0 
+        # make arrays come first 
+        if 'Array' in dtype_str:
+            priority -= 10
+        # use priority map or fallback
+        if dtype_str in self.priorities:
+            priority += self.priorities[dtype_str]
+        else:
+            priority += 7
+
+        return priority 
+
+class AlphabeticalStrategy(ToolInputOrderingStrategy):
     def order(self, inputs: list[ToolInput]) -> list[ToolInput]:
         inputs.sort(key=lambda x: x.tag)
         return inputs
 
-class MandatoryPriorityToolInputStrategy(ToolInputOrderingStrategy):
+class MandatoryStrategy(ToolInputOrderingStrategy):
     def order(self, inputs: list[ToolInput]) -> list[ToolInput]:
-        inputs.sort(key=lambda x: x.input_type.optional)
+        inputs.sort(key=lambda x: x.input_type.optional and x.default is not None)
         return inputs
 
-class PositionToolInputStrategy(ToolInputOrderingStrategy):
+class ExpressionStrategy(ToolInputOrderingStrategy):
+    primitives = (bool, str, int, float, type(None))
+
     def order(self, inputs: list[ToolInput]) -> list[ToolInput]:
-        inputs.sort(key=lambda x: x.position if x.position else 0)
+        inputs.sort(key=lambda x: self.is_expression(x.default))
         return inputs
+
+    def is_expression(self, default: Any) -> bool:
+        if default is not None:
+            if not isinstance(default, self.primitives):
+                return True
+        return False
+
+
+# class PositionToolInputStrategy(ToolInputOrderingStrategy):
+#     def order(self, inputs: list[ToolInput]) -> list[ToolInput]:
+#         inputs.sort(key=lambda x: x.position if x.position else 0)
+#         return inputs
 
 
 tool_input_strategies = [
-    AlphabeticalToolInputStrategy(),
-    MandatoryPriorityToolInputStrategy(),
-    PositionToolInputStrategy(),
+    AlphabeticalStrategy(),
+    DatatypeStrategy(),
+    MandatoryStrategy(),
+    ExpressionStrategy(),
 ]
 
 def order_tool_inputs(inputs: list[ToolInput]) -> list[ToolInput]:

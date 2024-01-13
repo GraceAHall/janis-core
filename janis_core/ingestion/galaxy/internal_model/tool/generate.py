@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from janis_core import settings
+from janis_core.ingestion.common import fetch_container_for_packages
 from janis_core.ingestion.galaxy.gxtool.command.cmdstr.analysis import CmdstrReferenceType
 from janis_core.ingestion.galaxy.gxtool.command.cmdstr.analysis import get_cmdstr_appearences
 from janis_core.ingestion.galaxy.gxtool.command import Command
@@ -28,7 +29,6 @@ from janis_core.ingestion.galaxy.gxtool.model import (
 )
 
 from .tool import ITool
-from .containers import resolve_dependencies_as_container
 
 
 def gen_tool(
@@ -54,10 +54,11 @@ class ToolFactory:
         self.gxstep = gxstep
 
     def create(self) -> ITool:
+        packages = [(req.name, req.version) for req in self.xmltool.metadata.requirements]
         tool = ITool(
             xmltool=self.xmltool,
             metadata=self.xmltool.metadata,
-            container=resolve_dependencies_as_container(self.xmltool),
+            container=fetch_container_for_packages(packages),
             base_command=self.get_base_command(),
             configfiles=self.xmltool.configfiles,
             scripts=self.xmltool.scripts,

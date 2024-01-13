@@ -3,8 +3,6 @@ cwlVersion: v1.0
 class: CommandLineTool
 
 hints:
-  DockerRequirement:
-    dockerPull: quay.io/biocontainers/fastqc:0.11.9--hdfd78af_1
   SoftwareRequirement:
     packages:
       fastqc:

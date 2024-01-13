@@ -5,7 +5,7 @@ from janis_core.tool.commandtool import ToolArgument
 
 from janis_core.operators.logical import If, IsDefined
 from janis_core.operators.standard import ReadContents, FilterNullOperator
-from janis_core.translations.common.preprocessing import to_builders
+from janis_core.modifications import to_builders
 from janis_core.tests.testtools import (
     SingleTestTool,
     ArrayStepTool,

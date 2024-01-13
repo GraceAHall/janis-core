@@ -1,0 +1,12 @@
+
+set -e
+echo \
+2 \
+aln.sorted.bam \
+--flag1 \
+--in-file=/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/aln.sorted.bam \
+/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/test.txt \
+/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/mutant_R1.fastq,/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/wildtype.fna \
+{bam: "/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/aln.sorted.bam", bai: "/mnt/miniwdl_task_container/work/_miniwdl_inputs/0/aln.sorted.bam.bai"} \
+> stdout.txt
+    

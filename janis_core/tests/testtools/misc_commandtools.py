@@ -133,7 +133,7 @@ class FilenameGeneratedTool(SingleTestTool):
             ToolInput(
                 "generatedInpOptional",
                 Filename(prefix=InputSelector("inpOptional")),
-                position=0,
+                position=1,
             ),
             ToolInput(
                 "generatedFileInp",
@@ -142,7 +142,7 @@ class FilenameGeneratedTool(SingleTestTool):
                     suffix=".transformed",
                     extension=".fnp",
                 ),
-                position=0,
+                position=2,
             ),
             ToolInput(
                 "generatedFileInpOptional",
@@ -151,7 +151,7 @@ class FilenameGeneratedTool(SingleTestTool):
                     suffix=".optional",
                     extension=".txt",
                 ),
-                position=0,
+                position=3,
             ),
         ]
 

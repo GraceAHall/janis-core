@@ -17,7 +17,8 @@ from .basics import (
     FileInputSelectorTestTool,
     StringInputSelectorTestTool,
     ComponentsMandatoryTestTool,
-    ResourcesTestTool
+    ResourcesTestTool,
+    ToolInputDefaultExpressionTestTool,
 )
 
 from .arrays import (
@@ -49,9 +50,9 @@ from .misc_commandtools import (
     BasicTestTool,
     VersionTestTool,
     SecondaryOutputTestTool,
+    SecondaryInputTestTool,
     AppendedSecondaryOutputTestTool,
     ReplacedSecondaryOutputTestTool,
-    SecondaryInputTestTool,
     InputQualityTestTool,
     MessagingTestTool,
 )

@@ -16,7 +16,7 @@ from janis_core.types.common_data_types import (
     AnyType,
     NumericType,
 )
-from .operator import Selector, Operator, SingleValueOperator, TwoValueOperator
+from .operator import Selector, InputSelector, Operator, SingleValueOperator, TwoValueOperator
 
 
 # As operators
@@ -189,7 +189,7 @@ class GroupOperator(Operator):
 
     def to_wdl(self, unwrap_operator, *args):
         arg = unwrap_operator(self.args[0])
-        return f"({arg})"
+        return f"{arg}"
 
     def to_cwl(self, unwrap_operator, *args):
         arg = unwrap_operator(self.args[0])
@@ -340,6 +340,16 @@ class EqualityOperator(TwoValueOperator):
 
     def argtypes(self):
         return [AnyType, AnyType]
+    
+    # NOTE: overriding base behaviour.
+    def to_wdl(self, unwrap_operator, *args):
+        # workaround for WDL using !defined(input_name) instead of simple Equality.
+        # i.e CWL / Galaxy / Janis EqualityOperator(InputSelector, None)
+        if isinstance(self.args[0], InputSelector) and self.args[1] is None:
+            arg1 = unwrap_operator(self.args[0])
+            return f"!defined({arg1})"
+        else:
+            return super().to_wdl(unwrap_operator, *args) # is this ok?
 
 
 class InequalityOperator(TwoValueOperator):
@@ -372,6 +382,16 @@ class InequalityOperator(TwoValueOperator):
     @staticmethod
     def apply_to(arg1, arg2):
         return arg1 != arg2
+    
+    # NOTE: overriding base behaviour.
+    def to_wdl(self, unwrap_operator, *args):
+        # workaround for WDL using defined(input_name) instead of simple Inequality.
+        # i.e CWL / Galaxy / Janis InequalityOperator(InputSelector, None)
+        if isinstance(self.args[0], InputSelector) and self.args[1] is None:
+            arg1 = unwrap_operator(self.args[0])
+            return f"defined({arg1})"
+        else:
+            return super().to_wdl(unwrap_operator, *args) # is this ok?
 
 
 class GtOperator(TwoValueOperator):

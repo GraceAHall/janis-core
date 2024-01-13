@@ -1,12 +1,14 @@
 import unittest
 from tempfile import TemporaryDirectory
 from typing import Optional, Any
+import regex as re 
 
 import wdlgen
+from janis_core.translations.wdl import unwrap_expression
 from janis_core.types import UnionType
-
-from janis_core.translations.common import to_builders
+from janis_core.ingestion import ingest
 from janis_core.translations import translate
+from janis_core.modifications import to_builders
 from janis_core import settings
 import janis_core.translations.wdl as wdl
 from janis_core import (
@@ -14,10 +16,11 @@ from janis_core import (
     ToolOutput,
     ToolInput,
     ToolArgument,
+    MemorySelector,
     String,
     CommandTool,
     Stdout,
-    InputSelector,
+    InputSelector, 
     Array,
     File,
     Filename,
@@ -27,9 +30,18 @@ from janis_core import (
     Float,
     CommandToolBuilder,
 )
-from janis_core.operators import CpuSelector, StringFormatter
-from janis_core.operators.logical import If, IsDefined
-from janis_core.operators.standard import JoinOperator, ReadContents
+from janis_core.operators import (
+    CpuSelector, 
+    StringFormatter, 
+    JoinOperator, 
+    ReadContents, 
+    GroupOperator, 
+    If, 
+    IsDefined,
+    BasenameOperator,
+    InequalityOperator
+)
+
 from janis_core.tests.testtools import (
     SecondaryTestType,
     NonEscapedSecondaryTestType,
@@ -38,20 +50,30 @@ from janis_core.tests.testtools import (
     FilenameGeneratedTool,
     BasicTestTool,
     VersionTestTool,
-    SecondaryInputTestTool,
     ArrayStepTool,
     OperatorResourcesTestTool,
+    ComponentsMandatoryTestTool,
+    ComponentsOptionalTestTool,
+    ComponentsMandatoryArrayTestTool,
+    ComponentsOptionalArrayTestTool,
+    ToolInputDefaultExpressionTestTool,
+    SecondaryInputTestTool,
+    # SecondaryOutputTestTool,
+    # AppendedSecondaryOutputTestTool,
+    # ReplacedSecondaryOutputTestTool,
 )
 
 from janis_core.tests.testworkflows import (
     StepInputExpressionTestWF,
     ArraysOfSecondaryFilesOutputsTestWF,
     ForEachTestWF,
+    SecondariesTestWF,
 )
 from janis_core.translations import WdlTranslator
 from janis_core.utils.scatter import ScatterDescription, ScatterMethod
 
-
+import os 
+CWL_TESTDATA_DIR = os.path.join(os.getcwd(), 'janis_core/tests/data/cwl')
 
 
 def reset_global_settings() -> None:
@@ -90,9 +112,37 @@ def non_blank_lines_str(text: str) -> str:
     outstr = '\n'.join(lines)
     return outstr
 
+def get_input_lines(taskdef: str) -> list[str]:
+    PATTERN = r' *input \{\n([^\n]+\n)* *\}'
+    m = list(re.finditer(PATTERN, taskdef, re.MULTILINE))[0]
+    lines = m.group(0).split('\n')
+    lines = lines[1:-1]
+    lines = [ln.strip() for ln in lines]
+    lines = [ln for ln in lines if ln != '']
+    return lines
+
+def get_command_lines(taskdef: str) -> list[str]:
+    PATTERN = r' *command <<<\n([^\n]+\n)* *>>>'
+    m = list(re.finditer(PATTERN, taskdef, re.MULTILINE))[0]
+    lines = m.group(0).split('\n')
+    lines = lines[1:-1]
+    lines = [ln.strip(' \\') for ln in lines]
+    return lines
+
+def get_output_lines(taskdef: str) -> list[str]:
+    # TODO 
+    raise NotImplementedError
+    # PATTERN = r' *command <<<\n([^\n]+\n)* *>>>'
+    # m = list(re.finditer(PATTERN, taskdef, re.MULTILINE))[0]
+    # lines = m.group(0).split('\n')
+    # lines = lines[1:-1]
+    # lines = [ln.strip() for ln in lines]
+    # return lines
 
 
-# test classes 
+
+
+### MOCK ENTITIES ###
 
 class MultipleEcho(CommandTool):
     @staticmethod
@@ -158,7 +208,10 @@ class TestTypeWithAlternateAndSecondary(File):
 
 
 
-class TestWdl(unittest.TestCase):
+
+### CORE MODULE TESTS ###
+    
+class TestDatatypes(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
@@ -169,56 +222,290 @@ class TestWdl(unittest.TestCase):
         self.assertTrue(wdl.optional)
         self.assertEqual("Array[File]?", wdl.get_string())
 
+    def test_string_nooptional_nodefault(self):
+        s = String()
+        self.assertEqual("String", s.wdl(has_default=False).get_string())
+
+    def test_string_nooptional_default(self):
+        s = String()
+        # As of 2019-07-10, the defaults are applied within the command input, so these can be null
+        self.assertEqual("String", s.wdl(has_default=True).get_string())
+
+    def test_string_optional_nodefault(self):
+        s = String(optional=True)
+        self.assertEqual("String?", s.wdl(has_default=False).get_string())
+
+    def test_string_optional_default(self):
+        s = String(optional=True)
+        self.assertEqual("String", s.wdl(has_default=True).get_string())
+
+    def test_uniontype_lots_of_files(self):
+        class TextFile(File):
+            def name(self):
+                return "TextFile"
+
+        uniontype = UnionType(File, TextFile)
+        self.assertEqual("File", uniontype.wdl().get_string())
+
+    def test_uniontype_file_int_fail(self):
+        uniontype = UnionType(File, int)
+        self.assertRaises(Exception, uniontype.wdl)
 
 
+class TestUnwrapExpression(unittest.TestCase):
 
-
-class TestWdlComments(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         reset_global_settings()
-        w = WorkflowBuilder("sbmf")
-        w.input("inp1", str)
-        w.input("inp2", str)
-        w.step(
-            "testTool",
-            SingleTestTool(input1=w.inp1, input2=w.inp2),
-        )
-        w = to_builders(w)
-        self.step = w.step_nodes["testTool"]
 
-    def test_wdl_comments(self):
-        settings.translate.RENDER_COMMENTS = True
-        outp = wdl.translate_step_node(
-            self.step, "A.SingleTestTool", {}, {"inp1", "inp2"}, None
+    # string_environment tests
+    def test_stringenv_null(self):
+        self.assertEqual(
+            "", unwrap_expression(None, None, string_environment=True)
         )
-        outstr = outp.get_string(indent=0)
-        outstr = non_blank_lines_str(outstr)
-        expected = """\
-call A.SingleTestTool as testTool {
-  input:
-    input1=inp1,  # String     
-    input2=inp2   # String?    
-}"""
-        self.assertEqual(expected, outstr)
 
-    def test_wdl_no_comments(self):
+    def test_stringenv_str(self):
+        self.assertEqual(
+            "TestString",
+            unwrap_expression(
+                "TestString", None, string_environment=True
+            ),
+        )
+
+    def test_stringenv_int(self):
+        self.assertEqual(
+            str(42),
+            unwrap_expression(42, None, string_environment=True),
+        )
+
+    def test_stringenv_input_selector(self):
+        ti = {"random": ToolInput("random", String())}
+        input_sel = InputSelector("random")
+        self.assertEqual(
+            "~{random}",
+            unwrap_expression(input_sel, ti, string_environment=True),
+        )
+    
+    def test_nostringenv_null(self):
+        self.assertEqual(
+            "",
+            unwrap_expression(None, None, string_environment=False),
+        )
+
+    def test_nostringenv_str(self):
+        self.assertEqual(
+            '"TestString"',
+            unwrap_expression(
+                "TestString", None, string_environment=False
+            ),
+        )
+
+    def test_nostringenv_int(self):
+        self.assertEqual(
+            str(42),
+            unwrap_expression(42, None, string_environment=False),
+        )
+
+    def test_nostringenv_input_selector(self):
+        ti = {"random": ToolInput("random", String())}
+        input_sel = InputSelector("random")
+        self.assertEqual(
+            "random",
+            unwrap_expression(input_sel, ti, string_environment=False),
+        )
+
+    # wildcard selector tests
+    def test_wildcard_selector_basic(self):
+        out = ToolOutput("out", Array(File), selector=WildcardSelector("*.txt"))
+        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
+        self.assertEqual('Array[File] out = glob("*.txt")', translated_out.get_string())
+    
+    def test_wildcard_selector_star(self):
+        self.assertRaises(
+            Exception,
+            unwrap_expression,
+            value=WildcardSelector("*"),
+            tool_id=None,
+        )
+
+    def test_wildcard_selector_single(self):
+        out = ToolOutput(
+            "out", File, selector=WildcardSelector("*.txt", select_first=True)
+        )
+        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
+        self.assertEqual('File out = glob("*.txt")[0]', translated_out.get_string())
+
+    def test_wildcard_selector_single_warning(self):
+        out = ToolOutput("out", File, selector=WildcardSelector("*.txt"))
+        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
+        self.assertEqual('File out = glob("*.txt")[0]', translated_out.get_string())
+
+    def test_wildcard_selector_single_optional(self):
+        out = ToolOutput(
+            "out",
+            File(optional=True),
+            selector=WildcardSelector("*.txt", select_first=True),
+        )
+        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
+        self.assertEqual(
+            'File? out = if length(glob("*.txt")) > 0 then glob("*.txt")[0] else None',
+            translated_out.get_string(),
+        )
+
+    # misc operators
+    def test_notnull_workflow(self):
+        w = WorkflowBuilder("wf")
+        w.input("inp", Optional[str])
+        w.output("out", source=w.inp.assert_not_null())
+
+        wdltool = w.translate("wdl", allow_empty_container=True, to_console=False)[0]
+        wdlline = non_blank_lines_list(wdltool)[-3].strip()
+        self.assertEqual("String out = select_first([inp])", wdlline)
+
+    def test_resource_operators(self):
+        settings.translate.WITH_RESOURCE_OVERRIDES = True
+        tool = OperatorResourcesTestTool()
+        tool_wdl = translate(tool, 'wdl', to_console=False)
+        print(tool_wdl)
+
+        self.assertIn("cpu: runtimeCpu", tool_wdl)
+        self.assertIn('docker: "ubuntu:latest"', tool_wdl)
+        self.assertIn("duration: runtimeSeconds", tool_wdl)
+        self.assertIn('memory: "~{runtimeMemory}G"', tool_wdl)
+
+    def test_read_contents_string(self):
+        t = CommandToolBuilder(
+            tool="test_readcontents",
+            base_command=["echo", "1"],
+            inputs=[ToolInput("inp", File)],
+            outputs=[
+                ToolOutput("out", String, glob=ReadContents(Stdout())),
+                ToolOutput(
+                    "out_json", String, selector=InputSelector("inp").read_json()["out"]
+                ),
+            ],
+            container=None,
+            version="-1",
+        )
+
+        t.translate("wdl", allow_empty_container=True)
+
+    def test_read_contents_as_int(self):
+        t = CommandToolBuilder(
+            tool="test_readcontents",
+            base_command=["echo", "1"],
+            inputs=[],
+            outputs=[ToolOutput("out", Float, glob=ReadContents(Stdout()).as_float())],
+            container=None,
+            version="-1",
+        )
+
+        t.translate("wdl", allow_empty_container=True)
+
+    def test_list_operators(self):
+        exp = WdlTranslator.unwrap_expression([1, 2, "three"])
+        self.assertEqual('[1, 2, "three"]', exp)
+
+    def test_foreach(self):
+        #with TemporaryDirectory() as tmpdir:
+        #    TestForEach().translate("wdl", to_disk=True, export_path=tmpdir)
+        #w, _ = WdlTranslator.translate_workflow(TestForEach())
         settings.translate.RENDER_COMMENTS = False
-        outp = wdl.translate_step_node(
-            self.step, "A.SingleTestTool", {}, {"inp1", "inp2"}, None
-        )
-        settings.translate.RENDER_COMMENTS = True
-        outstr = outp.get_string(indent=0)
-        outstr = non_blank_lines_str(outstr)
+        wf = ForEachTestWF()
+        wf = to_builders(wf)
+        translator = WdlTranslator()
+        translator.translate_workflow_internal(wf)
+        assert translator.main is not None
+        wf_trans = translator.main[1]
+        settings.translate.RENDER_COMMENTS = False
+        workflow_str = wf_trans.get_string()
+        workflow_str = non_blank_lines_str(workflow_str)
         expected = """\
-call A.SingleTestTool as testTool {
-  input:
-    input1=inp1,
-    input2=inp2
-}"""
-        self.assertEqual(expected, outstr)
+version development
+import "tools/EchoTestTool_TEST.wdl" as E
+workflow ForEachTestWF {
+  input {
+    Array[String] inp
+  }
+  scatter (idx in inp) {
+    call E.EchoTestTool as print {
+      input:
+        inp=idx + "-hello"
+    }
+  }
+  output {
+    Array[File] out = print.out
+  }
+}"""    
+        self.assertEqual(expected.strip(), workflow_str)
 
+    # string formatters
+    def test_string_formatter(self):
+        b = StringFormatter("no format")
+        res = unwrap_expression(b, inputsdict={}, string_environment=True)
+        self.assertEqual("no format", res)
 
-class TestWdlTranslatorOverrides(unittest.TestCase):
+    def test_string_formatter_one_string_param(self):
+        b = StringFormatter("there's {one} arg", one="a string")
+        res = unwrap_expression(b, inputsdict={}, string_environment=True)
+        self.assertEqual("there's a string arg", res)
+
+    def test_string_formatter_one_input_selector_param(self):
+        d = {"random_input": ToolInput("random_input", String())}
+        b = StringFormatter("an input {arg}", arg=InputSelector("random_input"))
+        res = unwrap_expression(b, d, string_environment=True)
+        self.assertEqual("an input ~{random_input}", res)
+
+    def test_string_formatter_two_param(self):
+        # vardict input format
+        d = {
+            "tumorInputName": ToolInput("tumorInputName", String()),
+            "normalInputName": ToolInput("normalInputName", String()),
+        }
+        b = StringFormatter(
+            "{tumorName}:{normalName}",
+            tumorName=InputSelector("tumorInputName"),
+            normalName=InputSelector("normalInputName"),
+        )
+        res = unwrap_expression(b, d, string_environment=True)
+        self.assertEqual("~{tumorInputName}:~{normalInputName}", res)
+
+    def test_escaped_characters(self):
+        tool = BasicTestTool()
+        tool = to_builders(tool)
+        translator = WdlTranslator()
+        translator.translate_tool_internal(tool)
+        assert len(translator.tools) == 1
+        tool_wdl = translator.tools[0][1]
+        arg = tool_wdl.command[-1].arguments[0]
+        self.assertEqual("'test:\\t:escaped:\\n:characters\"'", arg.value)
+
+    # test removed as optional placeholders don't throw errors anymore
+    # def test_string_formatter_optional_inpselect_no_default(self):
+    #     # will throw
+    #     ti = {"ti": ToolInput("ti", String(optional=True))}
+    #     b = StringFormatter("{place} michael", place=InputSelector("ti"))
+    #     self.assertRaises(Exception, unwrap_expression, b, ti)
+
+    def test_string_formatter_optional_inpselect_with_default(self):
+        ti = {"ti": ToolInput("ti", String(optional=True), default="hi")}
+        b = StringFormatter("{place} michael", place=InputSelector("ti"))
+        res = unwrap_expression(b, ti, string_environment=True)
+        self.assertEqual('~{ti} michael', res)
+
+    
+    def test_complex_fromcwl1(self):
+        filepath = f'{CWL_TESTDATA_DIR}/tools/BWA-Index.cwl'
+        cmdtool = ingest(filepath, 'cwl')
+        wdlstr = translate(cmdtool, 'wdl', to_console=False)
+        print(wdlstr)
+        cmdlines = get_command_lines(wdlstr)
+        actual = cmdlines[3]
+        expected = '\'~{if (defined(indexName)) then indexName else basename(sequences, ".*")}\''
+        self.assertEqual(expected, actual)
+    
+    
+
+class TestFileRendering(unittest.TestCase):
     def setUp(self):
         reset_global_settings()
         self.translator = WdlTranslator()
@@ -258,11 +545,111 @@ class TestWdlTranslatorOverrides(unittest.TestCase):
         self.assertEqual("wid-resources.json", self.translator.resources_filename(w))
 
 
-class TestWdlTranslatorBuilders(unittest.TestCase):
+
+### WORKFLOW TESTS ###
+    
+class TestWorkflowImports(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
-    def test_inputs_generator_secondary_files(self):
+    def test_basic(self):
+        raise NotImplementedError
+    
+
+class TestWorkflowInputs(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_basic(self):
+        raise NotImplementedError
+    
+    def test_default_string_formatter(self):
+        wf = WorkflowBuilder("wf")
+        wf.input("sampleName", str)
+        wf.input("platform", str)
+
+        wf.input(
+            "readGroupHeaderLine",
+            String(),
+            default=StringFormatter(
+                "@RG\\tID:{name}\\tSM:{name}\\tLB:{name}\\tPL:{pl}",
+                name=InputSelector("sampleName"),
+                pl=InputSelector("platform"),
+            ),
+        )
+        wf.step("print", EchoTestTool(inp=wf.readGroupHeaderLine))
+        wf.output("out", source=wf.print)
+        workflow_str, _, _, _ = wf.translate("wdl", to_console=False, render_comments=False)
+        workflow_str = non_blank_lines_str(workflow_str)
+        expected = """\
+version development
+import "tools/EchoTestTool_TEST.wdl" as E
+workflow Wf {
+  input {
+    String sampleName
+    String platform
+    String? readGroupHeaderLine = "@RG\\tID:~{sampleName}\\tSM:~{sampleName}\\tLB:~{sampleName}\\tPL:~{platform}"
+  }
+  call E.EchoTestTool as print {
+    input:
+      inp=select_first([readGroupHeaderLine, "@RG\\tID:~{sampleName}\\tSM:~{sampleName}\\tLB:~{sampleName}\\tPL:~{platform}"])
+  }
+  output {
+    File out = print.out
+  }
+}"""
+        self.assertEqual(expected, workflow_str)
+    
+
+
+class TestWorkflowSteps(unittest.TestCase):
+
+    def test_two_similar_tools(self):
+        w = WorkflowBuilder("testTwoToolsWithSameId")
+
+        w.input("inp", str)
+        w.step("stp1", BasicTestTool(testtool=w.inp))
+        w.step("stp2", VersionTestTool(testtool=w.inp))
+
+        settings.translate.RENDER_COMMENTS = False
+        mainstr, _, _, _ = translate(w, "wdl", to_console=False, render_comments=False)
+        mainstr = non_blank_lines_str(mainstr)
+
+        expected = """\
+version development
+import "tools/BasicTestTool.wdl" as B
+import "tools/BasicTestTool_v0_0_2.wdl" as B2
+workflow TestTwoToolsWithSameId {
+  input {
+    String inp
+  }
+  call B.BasicTestTool as stp1 {
+    input:
+      testtool=inp
+  }
+  call B2.BasicTestTool as stp2 {
+    input:
+      testtool=inp
+  }
+}"""
+
+        self.assertEqual(expected, mainstr)
+
+
+class TestWorkflowOutputs(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_basic(self):
+        raise NotImplementedError
+
+
+class TestInputsFile(unittest.TestCase):
+    def setUp(self):
+        reset_global_settings()
+        self.translator = wdl.WdlTranslator()
+
+    def test_secondary_files(self):
         w = WorkflowBuilder("tst")
         w.input("wsec", SecondaryTestType, default="test.ext")
         # w._add_input(Input("wsec", TestTypeWithSecondary(), value="test.ext"))
@@ -272,7 +659,7 @@ class TestWdlTranslatorBuilders(unittest.TestCase):
         self.assertIn('"tst.wsec": "test.ext",', translator.inputs_file)
         self.assertIn('"tst.wsec_txt": "test.txt"', translator.inputs_file)
 
-    def test_inputs_generator_array_of_secondary_files(self):
+    def test_array_of_secondary_files(self):
         w = WorkflowBuilder("tst")
         w.input("wsec", Array(SecondaryTestType()), default=["test.ext"])
         settings.translate.MERGE_RESOURCES = False
@@ -289,284 +676,6 @@ class TestWdlTranslatorBuilders(unittest.TestCase):
 }"""    
         self.assertEqual(expected, translator.inputs_file)
 
-    def test_translate_single_to_array_edge(self):
-        w = WorkflowBuilder("wf")
-        w.input("inp", str)
-        stp1 = w.step("stp1", BasicTestTool(testtool=w.inp), ignore_missing=True)
-        stp2 = w.step(
-            "stp2", BasicTestTool(arrayInp=stp1.std, testtool=w.inp), ignore_missing=True
-        )
-        w = to_builders(w)
-        settings.translate.RENDER_COMMENTS = False
-        outp = wdl.translate_step_node(stp2, stp2.id(), {}, set(), None)
-        outp_str = outp.get_string()
-        outp_str = non_blank_lines_list(outp_str)
-        self.assertEqual(f"arrayInp=[{stp1.id()}.std]", outp_str[3].strip())
-
-
-class TestWdlSelectorsAndGenerators(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_input_selector_base_stringenv(self):
-        ti = {"random": ToolInput("random", String())}
-        input_sel = InputSelector("random")
-        self.assertEqual(
-            "~{random}",
-            wdl.translate_input_selector(input_sel, ti, string_environment=True),
-        )
-
-    def test_input_selector_base_nostringenv(self):
-        ti = {"random": ToolInput("random", String())}
-        input_sel = InputSelector("random")
-        self.assertEqual(
-            "random",
-            wdl.translate_input_selector(input_sel, ti, string_environment=False),
-        )
-
-    def test_input_value_none_stringenv(self):
-        self.assertEqual(
-            "", wdl.WdlTranslator.unwrap_expression(None, None, string_environment=True)
-        )
-
-    def test_input_value_none_nostringenv(self):
-        self.assertEqual(
-            "",
-            wdl.WdlTranslator.unwrap_expression(None, None, string_environment=False),
-        )
-
-    def test_input_value_string_stringenv(self):
-        self.assertEqual(
-            "TestString",
-            wdl.WdlTranslator.unwrap_expression(
-                "TestString", None, string_environment=True
-            ),
-        )
-
-    def test_input_value_string_nostringenv(self):
-        self.assertEqual(
-            '"TestString"',
-            wdl.WdlTranslator.unwrap_expression(
-                "TestString", None, string_environment=False
-            ),
-        )
-
-    def test_input_value_int_stringenv(self):
-        self.assertEqual(
-            str(42),
-            wdl.WdlTranslator.unwrap_expression(42, None, string_environment=True),
-        )
-
-    def test_input_value_int_nostringenv(self):
-        self.assertEqual(
-            str(42),
-            wdl.WdlTranslator.unwrap_expression(42, None, string_environment=False),
-        )
-
-    def test_input_value_filename_stringenv(self):
-
-        fn = Filename()
-        self.assertEqual(
-            fn.generated_filename(),
-            wdl.WdlTranslator.unwrap_expression(fn, None, string_environment=True),
-        )
-
-    def test_input_value_filename_nostringenv(self):
-
-        fn = Filename()
-        self.assertEqual(
-            '"%s"' % fn.generated_filename(),
-            wdl.WdlTranslator.unwrap_expression(fn, None, string_environment=False),
-        )
-
-    def test_input_value_wildcard(self):
-        self.assertRaises(
-            Exception,
-            wdl.WdlTranslator.unwrap_expression,
-            value=WildcardSelector("*"),
-            tool_id=None,
-        )
-
-    # def test_input_value_cpuselect_stringenv(self):
-    #     # CpuSelector relies on their being a runtime_cpu attribute,
-    #     # this test will assume it's present, and '' will test ensure
-    #     # that it is actually present
-    #     ti = {"runtime_cpu": ToolInput("runtime_cpu", Int(), default=1)}
-    #     inp = CpuSelector()
-    #     self.assertEqual(
-    #         "~{select_first([runtime_cpu, 1])}",
-    #         wdl.WdlTranslator.unwrap_expression(inp, ti, string_environment=True),
-    #     )
-
-    # def test_input_value_cpuselect_nostringenv(self):
-    #     # CpuSelector relies on their being a runtime_cpu attribute,
-    #     # this test will assume it's present, and '' will test ensure
-    #     # that it is actually present
-    #
-    #     ti = {"runtime_cpu": ToolInput("runtime_cpu", Int(), default=1)}
-    #     inp = CpuSelector()
-    #     self.assertEqual(
-    #         "select_first([runtime_cpu, 1])",
-    #         wdl.WdlTranslator.unwrap_expression(inp, ti, string_environment=False),
-    #     )
-
-    def test_tool_input_value_default_cpuselect(self):
-        ti = ToolInput("threads", Int(), default=CpuSelector(), prefix="-t")
-        tid = {"threads": ti}
-
-        tr = wdl.translate_command_input(ti)
-        self.assertEqual(
-            "-t ~{select_first([threads, select_first([runtime_cpu, 1])])}",
-            tr.get_string(),
-        )
-
-    def test_tool_input_value_default_cpuselect_nodefault(self):
-        ti = ToolInput("threads", Int(), default=CpuSelector(None), prefix="-t")
-        tid = {"threads": ti}
-
-        tr = wdl.translate_command_input(ti)
-        self.assertEqual("-t ~{select_first([threads, runtime_cpu])}", tr.get_string())
-
-    def test_tool_input_optional_array(self):
-        ti = ToolInput(
-            "adapter",
-            input_type=Array(String(), optional=True),
-            prefix="-a",
-            prefix_applies_to_all_elements=True,
-        )
-        tr = wdl.translate_command_input(ti)
-        self.assertEqual(
-            '~{if (defined(adapter) && length(select_first([adapter])) > 0) then "-a \'" + sep("\' -a \'", select_first([adapter])) + "\'" else ""}',
-            tr.get_string(),
-        )
-
-    # def test_input_value_memselect_stringenv(self):
-    #     inp = MemorySelector()
-    #     self.assertEqual(
-    #         "~{floor(runtime_memory)}",
-    #         wdl.WdlTranslator.unwrap_expression(inp, string_environment=True)
-    #     )
-    #
-    # def test_input_value_memselect_nostringenv(self):
-    #     inp = MemorySelector()
-    #     self.assertEqual(
-    #         "floor(runtime_memory)",
-    #         wdl.WdlTranslator.unwrap_expression(inp, string_environment=False)
-    #     )
-
-    def test_input_value_wdl_callable(self):
-        class CallableWdl:
-            def wdl(self):
-                return "unbelievable"
-
-        self.assertEqual(
-            "unbelievable", wdl.WdlTranslator.unwrap_expression(CallableWdl(), None)
-        )
-
-    def test_input_value_wdl_noncallable(self):
-        class NonCallableWdl:
-            def __init__(self):
-                self.wdl = None
-
-        self.assertRaises(
-            Exception,
-            wdl.WdlTranslator.unwrap_expression,
-            value=NonCallableWdl(),
-            tool_id=None,
-        )
-
-    def test_string_formatter(self):
-        b = StringFormatter("no format")
-        res = wdl.WdlTranslator.unwrap_expression(b, None, string_environment=True)
-        self.assertEqual("no format", res)
-
-    def test_string_formatter_one_string_param(self):
-        b = StringFormatter("there's {one} arg", one="a string")
-        res = wdl.WdlTranslator.unwrap_expression(b, None, string_environment=True)
-        self.assertEqual("there's a string arg", res)
-
-    def test_string_formatter_one_input_selector_param(self):
-        d = {"random_input": ToolInput("random_input", String())}
-        b = StringFormatter("an input {arg}", arg=InputSelector("random_input"))
-        res = wdl.WdlTranslator.unwrap_expression(b, d, string_environment=True)
-        self.assertEqual("an input ~{random_input}", res)
-
-    def test_string_formatter_two_param(self):
-        # vardict input format
-        d = {
-            "tumorInputName": ToolInput("tumorInputName", String()),
-            "normalInputName": ToolInput("normalInputName", String()),
-        }
-        b = StringFormatter(
-            "{tumorName}:{normalName}",
-            tumorName=InputSelector("tumorInputName"),
-            normalName=InputSelector("normalInputName"),
-        )
-        res = wdl.WdlTranslator.unwrap_expression(b, d, string_environment=True)
-        self.assertEqual("~{tumorInputName}:~{normalInputName}", res)
-
-    def test_escaped_characters(self):
-        tool = BasicTestTool()
-        tool = to_builders(tool)
-        translator = WdlTranslator()
-        translator.translate_tool_internal(tool)
-        assert len(translator.tools) == 1
-        tool_wdl = translator.tools[0][1]
-        arg = tool_wdl.command[-1].arguments[0]
-        self.assertEqual("'test:\\t:escaped:\\n:characters\"'", arg.value)
-
-    # test removed as optional placeholders don't throw errors anymore
-    # def test_string_formatter_optional_inpselect_no_default(self):
-    #     # will throw
-    #     ti = {"ti": ToolInput("ti", String(optional=True))}
-    #     b = StringFormatter("{place} michael", place=InputSelector("ti"))
-    #     self.assertRaises(Exception, wdl.WdlTranslator.unwrap_expression, b, ti)
-
-    def test_string_formatter_optional_inpselect_with_default(self):
-        ti = {"ti": ToolInput("ti", String(optional=True), default="hi")}
-        b = StringFormatter("{place} michael", place=InputSelector("ti"))
-        res = wdl.WdlTranslator.unwrap_expression(b, ti, string_environment=True)
-        self.assertEqual('~{select_first([ti, "hi"])} michael', res)
-
-    def test_resolve_filename_in_inpselect(self):
-        fn = Filename(extension=".ext")
-        ti = {"ti": ToolInput("ti", fn)}
-        b = StringFormatter("fn: {place}", place=InputSelector("ti"))
-        res = wdl.WdlTranslator.unwrap_expression(b, ti)
-        self.assertEqual(
-            f'"fn: ~{{select_first([ti, "{fn.generated_filename()}"])}}"', res
-        )
-
-
-class TestWDLFilenameGeneration(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_1(self):
-        tool = FilenameGeneratedTool()
-        mapped = [
-            a.get_string()
-            for a in WdlTranslator.build_command_from_inputs(tool.inputs())
-        ]
-
-        self.assertEqual("'~{select_first([generatedInp, \"~{inp}\"])}'", mapped[0])
-        self.assertEqual(
-            "'~{select_first([generatedInpOptional, \"~{inpOptional}\"])}'", mapped[1]
-        )
-        self.assertEqual(
-            '\'~{select_first([generatedFileInp, "~{basename(fileInp, ".txt")}.transformed.fnp"])}\'',
-            mapped[2],
-        )
-        self.assertEqual(
-            '\'~{select_first([generatedFileInpOptional, "~{basename(fileInpOptional, ".txt")}.optional.txt"])}\'',
-            mapped[3],
-        )
-
-
-class TestWdlGenerateInput(unittest.TestCase):
-    def setUp(self):
-        reset_global_settings()
-        self.translator = wdl.WdlTranslator()
 
     def test_input_in_input_value_nooptional_nodefault(self):
         wf = WorkflowBuilder("test_input_in_inputfile")
@@ -663,10 +772,10 @@ class TestWdlGenerateInput(unittest.TestCase):
         os = WdlTranslator.translate_tool_outputs([toolout], inmap, tool=tool)
 
         self.assertEqual("out", os[0].name)
-        self.assertEqual('(testtool + "/out")', os[0].expression)
+        self.assertEqual('testtool + "/out"', os[0].expression)
 
         self.assertEqual("out_txt", os[1].name)
-        self.assertEqual('(testtool + "/out") + ".txt"', os[1].expression)
+        self.assertEqual('testtool + "/out" + ".txt"', os[1].expression)
 
     def test_optional_tool_output_with_secondary(self):
         tool = TestToolWithSecondaryOutput()
@@ -683,9 +792,132 @@ class TestWdlGenerateInput(unittest.TestCase):
         )
 
 
-class TestWdlToolInputGeneration(unittest.TestCase):
+
+### TOOL TESTS ###
+
+
+class TestToolInputs(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
+
+    def test_mandatory_singles(self) -> None:
+        wdlstr = translate(ComponentsMandatoryTestTool(), 'wdl')
+        actual = set(get_input_lines(wdlstr))
+        expected = set([
+            'File posBasic',
+            'String optBasic',
+            'Int posDefault = 95',
+            'Int optDefault = 5',
+            'Boolean flagTrue = true',
+            'Boolean flagFalse = false',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+    def test_optional_singles(self) -> None:
+        wdlstr = translate(ComponentsOptionalTestTool(), 'wdl')
+        actual = set(get_input_lines(wdlstr))
+        expected = set([
+            'String? optOptional',
+            'String? posOptional',
+            'Boolean flagTrue = true',
+            'Boolean flagFalse = false',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+    def test_mandatory_arrays(self) -> None:
+        wdlstr = translate(ComponentsMandatoryArrayTestTool(), 'wdl')
+        actual = set(get_input_lines(wdlstr))
+        expected = set([
+            'Array[File] posBasicArr',
+            'Array[String] optBasicArr',
+            'Array[String] optBasicArrPrefixeach',
+            'Array[String] optDefaultArrPrefixeach = ["hi", "there"]',
+            'Array[Int] posDefaultArr = [1, 2]',
+            'Array[Int] optDefaultArr = [100, 200, 300]',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+    def test_optional_arrays(self) -> None:
+        wdlstr = translate(ComponentsOptionalArrayTestTool(), 'wdl')
+        actual = set(get_input_lines(wdlstr))
+        expected = set([
+            'Array[File]? posOptionalArr',
+            'Array[String] optOptionalArr = ["hi", "there"]',
+            'Array[String]? optOptionalArrPrefixeach',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+    def test_defaults(self) -> None:
+        wdlstr = translate(ToolInputDefaultExpressionTestTool(), 'wdl')
+        actual = set(get_input_lines(wdlstr))
+        expected = set([
+            'File inFile',
+            'String inFilename = basename(inFile)',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+    def test_secondaries(self) -> None:
+        mainstr, _, subworkflows, subtools = translate(SecondariesTestWF(), 'wdl')
+        actual = set(get_input_lines(subtools[0][1]))
+        expected = set([
+            'File bam1',
+            'File bam2',
+            'File bam3',
+            'File bam1_bai',
+            'File bam2_bai',
+            'File bam3_bai',
+        ])
+        self.assertSetEqual(expected, actual)
+    
+
+class TestToolCommand(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_mandatory_singles(self) -> None:
+        wdlstr = translate(ComponentsMandatoryTestTool(), 'wdl')
+        actual = set(get_command_lines(wdlstr))
+        expected = set([
+            'set -e',
+            'echo',
+            "'~{posBasic}'",
+            "~{posDefault}",
+            '~{true="--flag-true" false="" flagTrue}',
+            '~{true="--flag-false" false="" flagFalse}',
+            "--opt-basic '~{optBasic}'",
+            "--opt-default ~{optDefault}",
+        ])
+        self.assertSetEqual(expected, actual)
+
+    def test_optional_singles(self) -> None:
+        wdlstr = translate(ComponentsOptionalTestTool(), 'wdl')
+        actual = set(get_command_lines(wdlstr))
+        expected = set([
+            'set -e',
+            'echo',
+            '~{if defined(posOptional) then ("\'" + posOptional + "\'") else ""}',
+            '~{true="--flag-true" false="" flagTrue}',
+            '~{true="--flag-false" false="" flagFalse}',
+            '~{if defined(optOptional) then ("--opt-optional \'" + optOptional + "\'") else ""}',
+        ])
+        self.assertSetEqual(expected, actual)
+   
+    def test_mandatory_arrays(self) -> None:
+        wdlstr = translate(ComponentsMandatoryArrayTestTool(), 'wdl')
+        print(wdlstr)
+        actual = set(get_command_lines(wdlstr))
+        expected = set([
+            'set -e',
+            'echo',
+            '~{\'"\' + sep(\'" "\', posBasicArr)" + \'"\'}',
+            '~{posDefaultArr}',
+            '--opt-basic ~{\'"\' + sep(\'" "\', optBasicArr)" + \'"\'}',
+            '--opt-default ~{optDefaultArr}',
+            '--opt-basic-prefixeach ~{\'"\' + sep(\'" --opt-basic-prefixeach  "\', optBasicArrPrefixeach) + \'"\'}',
+            '--opt-default-prefixeach ~{\'"\' + sep(\'" --opt-default-prefixeach  "\', optDefaultArrPrefixeach) + \'"\'}',
+        ])
+        '--opt-basic ~{\'"\' + sep(\'" "\', optBasicArr)" + \'"\'}'
+        self.assertSetEqual(expected, actual)
 
     def test_nodefault_nooptional_position(self):
         ti = ToolInput("tag", String(), position=0)
@@ -736,13 +968,13 @@ class TestWdlToolInputGeneration(unittest.TestCase):
         # this will get turned into an optional
         ti = ToolInput("tag", String(), position=0, default="defval")
         resp = wdl.translate_command_input(ti)
-        self.assertEqual("'~{select_first([tag, \"defval\"])}'", resp.get_string())
+        self.assertEqual("'~{tag}'", resp.get_string())
 
     def test_default_nooptional_prefix_sep(self):
         ti = ToolInput("tag", String(), prefix="--amazing", default="defval")
         resp = wdl.translate_command_input(ti)
         self.assertEqual(
-            "--amazing '~{select_first([tag, \"defval\"])}'", resp.get_string()
+            "--amazing '~{tag}'", resp.get_string()
         )
 
     def test_default_nooptional_prefix_nosep(self):
@@ -755,14 +987,14 @@ class TestWdlToolInputGeneration(unittest.TestCase):
         )
         resp = wdl.translate_command_input(ti)
         self.assertEqual(
-            "--amazing='~{select_first([tag, \"defval\"])}'", resp.get_string()
+            "--amazing='~{tag}'", resp.get_string()
         )
 
     def test_default_optional_position(self):
         ti = ToolInput("tag", String(optional=True), position=0, default="defval")
         resp = wdl.translate_command_input(ti)
         self.assertEqual(
-            '~{if defined(select_first([tag, "defval"])) then ("\'" + select_first([tag, "defval"]) + "\'") else ""}',
+            "'~{tag}'",
             resp.get_string(),
         )
 
@@ -772,7 +1004,7 @@ class TestWdlToolInputGeneration(unittest.TestCase):
         )
         resp = wdl.translate_command_input(ti)
         self.assertEqual(
-            '~{if defined(select_first([tag, "defval"])) then ("--amazing \'" + select_first([tag, "defval"]) + "\'") else ""}',
+            "--amazing '~{tag}'",
             resp.get_string(),
         )
 
@@ -786,72 +1018,326 @@ class TestWdlToolInputGeneration(unittest.TestCase):
         )
         resp = wdl.translate_command_input(ti)
         self.assertEqual(
-            '~{if defined(select_first([tag, "defval"])) then ("--amazing=\'" + select_first([tag, "defval"]) + "\'") else ""}',
+            "--amazing='~{tag}'",
             resp.get_string(),
         )
 
-    def test_bind_boolean(self):
+    def test_bind_boolean1(self):
         ti = ToolInput("tag", Boolean, prefix="--amazing", default=True)
         resp = wdl.translate_command_input(ti).get_string()
-        self.assertEqual('~{if tag then "--amazing" else ""}', resp)
+        self.assertEqual('~{true="--amazing" false="" tag}', resp)
 
-    def test_bind_optional_oolean_as_default(self):
-        ti = ToolInput("tag", Boolean(optional=True), prefix="--amazing", default=True)
-        resp = wdl.translate_command_input(ti).get_string()
-        self.assertEqual(
-            '~{if select_first([tag, true]) then "--amazing" else ""}', resp
-        )
-
-    def test_bind_boolean(self):
+    def test_bind_boolean2(self):
         ti = ToolInput("tag", Boolean(optional=True), prefix="--amazing")
         resp = wdl.translate_command_input(ti).get_string()
         self.assertEqual(
-            '~{if (defined(tag) && select_first([tag])) then "--amazing" else ""}', resp
+            '~{true="--amazing" false="" tag}', resp
         )
 
-    def test_array_prefix_each_element_non_quoted(self):
-        ti = ToolInput(
-            "tag", Array(Int), prefix="-i", prefix_applies_to_all_elements=True
-        )
+    def test_bind_optional_boolean_as_default(self):
+        ti = ToolInput("tag", Boolean(optional=True), prefix="--amazing", default=True)
         resp = wdl.translate_command_input(ti).get_string()
         self.assertEqual(
-            '~{if length(tag) > 0 then sep(" ", prefix("-i ", tag)) else ""}', resp
+            '~{true="--amazing" false="" tag}', resp
         )
 
-
-class TestWdlInputTranslation(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_string_nooptional_nodefault(self):
-        s = String()
-        self.assertEqual("String", s.wdl(has_default=False).get_string())
-
-    def test_string_nooptional_default(self):
-        s = String()
-        # As of 2019-07-10, the defaults are applied within the command input, so these can be null
-        self.assertEqual("String?", s.wdl(has_default=True).get_string())
-
-    def test_string_optional_nodefault(self):
-        s = String(optional=True)
-        self.assertEqual("String?", s.wdl(has_default=False).get_string())
-
-    def test_string_optional_default(self):
-        s = String(optional=True)
-        self.assertEqual("String?", s.wdl(has_default=True).get_string())
-
-
-class TestWdlEnvVar(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_environment1(self):
+    def test_environment_vars(self):
         tool = BasicTestTool()
         out = translate(tool, 'wdl')
         self.assertIn("export test1='~{testtool}'", out)
 
+    def test_input_value_memselect_stringenv(self):
+        inp = MemorySelector()
+        inputsdict = {'runtimeMemory': ToolInput('runtimeMemory', Int())}
+        self.assertEqual(
+            "~{floor(runtimeMemory)}",
+            unwrap_expression(inp, inputsdict=inputsdict, string_environment=True)
+        )
+    
+    def test_input_value_memselect_nostringenv(self):
+        inp = MemorySelector()
+        inputsdict = {'runtimeMemory': ToolInput('runtimeMemory', Int())}
+        self.assertEqual(
+            "floor(runtimeMemory)",
+            unwrap_expression(inp, inputsdict=inputsdict, string_environment=False)
+        )
+    
+    def test_tool_input_value_default_cpuselect(self):
+        ti = ToolInput("threads", Int(), default=CpuSelector(), prefix="-t")
+        tid = {"threads": ti}
 
-class TestWdlMaxResources(unittest.TestCase):
+        tr = wdl.translate_command_input(ti)
+        self.assertEqual(
+            "-t ~{threads}",
+            tr.get_string(),
+        )
+
+    def test_tool_input_value_default_cpuselect_nodefault(self):
+        ti = ToolInput("threads", Int(), default=CpuSelector(None), prefix="-t")
+        tid = {"threads": ti}
+
+        tr = wdl.translate_command_input(ti)
+        self.assertEqual("-t ~{threads}", tr.get_string())
+
+    def test_input_value_wdl_callable(self):
+        class CallableWdl:
+            def wdl(self):
+                return "unbelievable"
+
+        self.assertEqual(
+            "unbelievable", unwrap_expression(CallableWdl(), None)
+        )
+
+    def test_input_value_wdl_noncallable(self):
+        class NonCallableWdl:
+            def __init__(self):
+                self.wdl = None
+
+        self.assertRaises(
+            Exception,
+            unwrap_expression,
+            value=NonCallableWdl(),
+            tool_id=None,
+        )
+
+
+class TestToolOutputs(unittest.TestCase):
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_1(self) -> None:
+        raise NotImplementedError
+    
+    def test_notnull_cmdtool(self):
+        t = CommandToolBuilder(
+            tool="id",
+            base_command=None,
+            inputs=[ToolInput("inp", Optional[str])],
+            outputs=[
+                ToolOutput("out", str, glob=InputSelector("inp").assert_not_null())
+            ],
+            version=None,
+            container=None,
+        )
+
+        wdltool = t.translate("wdl", allow_empty_container=True, to_console=False)
+        wdlline = non_blank_lines_list(wdltool)[-3].strip()
+        self.assertEqual('String out = select_first([if defined(inp) then inp else "generated"])', wdlline)
+
+
+class TestToolFilesAndDirectoriesToCreate(unittest.TestCase):
+
+    initial_params = {
+        "tool": "testCreateFilesAndDirectries",
+        "version": "DEV",
+        "container": "ubuntu",
+        "base_command": "cat",
+        "inputs": [ToolInput("inp", File), ToolInput("name", str)],
+        "outputs": [ToolOutput("out", Stdout)],
+    }
+    
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_create_single_directory(self):
+        command = CommandToolBuilder(
+            **self.initial_params, directories_to_create="test-directory"
+        )
+        commands = WdlTranslator.build_commands_for_file_to_create(command)
+        self.assertEqual(1, len(commands))
+
+        self.assertEqual("mkdir -p 'test-directory'", commands[0].command)
+
+    def test_create_single_directory_from_selector(self):
+        command = CommandToolBuilder(
+            **self.initial_params, directories_to_create=InputSelector("name")
+        )
+        commands = WdlTranslator.build_commands_for_file_to_create(command)
+        self.assertEqual(1, len(commands))
+        self.assertEqual("mkdir -p '~{name}'", commands[0].command)
+
+    def test_create_single_directory_from_operator(self):
+        command = CommandToolBuilder(
+            **self.initial_params, directories_to_create=InputSelector("name") + "-out"
+        )
+        commands = WdlTranslator.build_commands_for_file_to_create(command)
+        self.assertEqual(1, len(commands))
+        self.assertEqual("mkdir -p '~{name + \"-out\"}'", commands[0].command)
+
+    def test_create_single_file_from_operator(self):
+        command = CommandToolBuilder(
+            **self.initial_params,
+            files_to_create=[("my-path.txt", InputSelector("inp").contents())],
+        )
+        commands = WdlTranslator.build_commands_for_file_to_create(command)
+        self.assertEqual(1, len(commands))
+        expected = """\
+cat <<EOT >> 'my-path.txt'
+~{read_string(inp)}
+EOT"""
+        self.assertEqual(expected, commands[0].command)
+
+    def test_create_single_file_path_from_operator(self):
+        command = CommandToolBuilder(
+            **self.initial_params,
+            files_to_create=[
+                (
+                    StringFormatter("{name}.txt", name=InputSelector("name")),
+                    "this is contents",
+                )
+            ],
+        )
+        commands = WdlTranslator.build_commands_for_file_to_create(command)
+        self.assertEqual(1, len(commands))
+        expected = """\
+cat <<EOT >> '~{name}.txt'
+this is contents
+EOT"""
+        self.assertEqual(expected, commands[0].command)
+
+
+
+### MISC TESTS ###
+
+
+class TestContainerOverrides(unittest.TestCase):
+
+    def setUp(self) -> None:
+        reset_global_settings()
+
+    def test_tool_dict_override(self):
+        expected_container = "container/override"
+
+        tool = SingleTestTool()
+        translated = translate(tool, 'wdl', container_override={tool.id(): expected_container})
+
+        lines = non_blank_lines_list(translated)
+        lines = [ln.strip() for ln in lines]
+        self.assertIn(f'docker: "{expected_container}"', lines)
+
+    def test_tool_string_override(self):
+        expected_container = "container/override"
+        
+        tool = SingleTestTool()
+        translated = tool.translate("wdl", to_console=False, container_override=expected_container)
+
+        lines = non_blank_lines_list(translated)
+        lines = [ln.strip() for ln in lines]
+        self.assertIn(f'docker: "{expected_container}"', lines)
+
+    def test_tool_override_casecheck(self):
+        expected_container = "container/override"
+        tool = SingleTestTool()
+
+        # Assert that our tool id is not UPPER, so when we override with the
+        toolid_upper = tool.id().upper()
+        self.assertNotEqual(tool.id(), toolid_upper)
+        translated = tool.translate(
+            "wdl",
+            to_console=False,
+            container_override={toolid_upper: expected_container},
+        )
+
+        lines = non_blank_lines_list(translated)
+        lines = [ln.strip() for ln in lines]
+        self.assertIn(f'docker: "{expected_container}"', lines)
+
+
+class TestFilenames(unittest.TestCase):
+
+    def setUp(self):
+        reset_global_settings()
+    
+    def test_basic(self):
+        tool = FilenameGeneratedTool()
+        mapped = [
+            a.get_string()
+            for a in WdlTranslator.build_command_from_inputs(tool.inputs())
+        ]
+
+        self.assertEqual("'~{select_first([generatedInp, \"~{inp}\"])}'", mapped[0])
+        self.assertEqual(
+            "'~{select_first([generatedInpOptional, \"~{inpOptional}\"])}'", mapped[1]
+        )
+        self.assertEqual(
+            '\'~{select_first([generatedFileInp, "~{basename(fileInp, ".txt")}.transformed.fnp"])}\'',
+            mapped[2],
+        )
+        self.assertEqual(
+            '\'~{select_first([generatedFileInpOptional, "~{basename(fileInpOptional, ".txt")}.optional.txt"])}\'',
+            mapped[3],
+        )
+
+    def test_resolve_filename_in_inpselect(self):
+        fn = Filename(extension=".ext")
+        ti = {"ti": ToolInput("ti", fn)}
+        b = StringFormatter("fn: {place}", place=InputSelector("ti"))
+        res = unwrap_expression(b, ti)
+        self.assertEqual('"fn: ~{ti}"', res)
+    
+    def test_unwrap_stringenv(self):
+
+        fn = Filename()
+        self.assertEqual(
+            fn.generated_filename(),
+            unwrap_expression(fn, None, string_environment=True),
+        )
+
+    def test_unwrap_nostringenv(self):
+
+        fn = Filename()
+        self.assertEqual(
+            '"%s"' % fn.generated_filename(),
+            unwrap_expression(fn, None, string_environment=False),
+        )
+
+
+class TestComments(unittest.TestCase):
+    def setUp(self):
+        reset_global_settings()
+        w = WorkflowBuilder("sbmf")
+        w.input("inp1", str)
+        w.input("inp2", str)
+        w.step(
+            "testTool",
+            SingleTestTool(input1=w.inp1, input2=w.inp2),
+        )
+        w = to_builders(w)
+        self.step = w.step_nodes["testTool"]
+
+    def test_wdl_comments(self):
+        settings.translate.RENDER_COMMENTS = True
+        outp = wdl.translate_step_node(
+            self.step, "A.SingleTestTool", {}, {"inp1", "inp2"}, None
+        )
+        outstr = outp.get_string(indent=0)
+        outstr = non_blank_lines_str(outstr)
+        expected = """\
+call A.SingleTestTool as testTool {
+  input:
+    input1=inp1,  # String     
+    input2=inp2   # String?    
+}"""
+        self.assertEqual(expected, outstr)
+
+    def test_wdl_no_comments(self):
+        settings.translate.RENDER_COMMENTS = False
+        outp = wdl.translate_step_node(
+            self.step, "A.SingleTestTool", {}, {"inp1", "inp2"}, None
+        )
+        settings.translate.RENDER_COMMENTS = True
+        outstr = outp.get_string(indent=0)
+        outstr = non_blank_lines_str(outstr)
+        expected = """\
+call A.SingleTestTool as testTool {
+  input:
+    input1=inp1,
+    input2=inp2
+}"""
+        self.assertEqual(expected, outstr)
+
+
+class TestMaxResources(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
@@ -892,6 +1378,15 @@ class TestWdlMaxResources(unittest.TestCase):
         self.assertEqual(
             1, resources["BasicTestToolWf.basictesttool_runtime_memory"]
         )
+
+
+
+### PLUMBING ###
+
+class TestPlumbing(unittest.TestCase):
+
+    def setUp(self) -> None:
+        reset_global_settings()
 
 
 class TestWdlScatterByMultipleFields(unittest.TestCase):
@@ -1084,6 +1579,7 @@ class TestRuntimeOverrideGenerator(unittest.TestCase):
         reset_global_settings()
 
     def test_basic(self):
+        self.maxDiff = None
         w = WorkflowBuilder("wb")
         w.input("inp", str)
         w.step("echo", SingleTestTool(input1=w.inp))
@@ -1096,17 +1592,18 @@ class TestRuntimeOverrideGenerator(unittest.TestCase):
             allow_empty_container=True,
             render_comments=False
         )
+        print(wf)
         workflow_lines = non_blank_lines_list(wf)
         _tooldef = """\
-workflow wb {
+workflow Wb {
   input {
     String inp
     Int? echo_runtime_memory
     Int? echo_runtime_cpu
     Int? echo_runtime_disk
-    Int? echo_2_runtime_memory
-    Int? echo_2_runtime_cpu
-    Int? echo_2_runtime_disk
+    Int? echo2_runtime_memory
+    Int? echo2_runtime_cpu
+    Int? echo2_runtime_disk
   }
   call S.SingleTestTool as echo {
     input:
@@ -1115,24 +1612,24 @@ workflow wb {
       runtime_cpu=echo_runtime_cpu,
       runtime_disk=echo_runtime_disk
   }
-  call S.SingleTestTool as echo_2 {
+  call S.SingleTestTool as echo2 {
     input:
       input1=inp,
-      runtime_memory=echo_2_runtime_memory,
-      runtime_cpu=echo_2_runtime_cpu,
-      runtime_disk=echo_2_runtime_disk
+      runtime_memory=echo2_runtime_memory,
+      runtime_cpu=echo2_runtime_cpu,
+      runtime_disk=echo2_runtime_disk
   }
 }"""
         for ln in workflow_lines:
             print(ln)
         self.assertEqual(_tooldef, '\n'.join(workflow_lines[2:]))
 
-
-class TestLinkStatements(unittest.TestCase):
+    
+class TestSecondaryTranslation(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
-    def test_1(self):
+    def test_io_cmdtool(self):
         import janis_core as j
 
         class FileWithSec(j.File):
@@ -1165,133 +1662,6 @@ class TestLinkStatements(unittest.TestCase):
 
         Tool.translate("wdl")
 
-
-class WorkflowWdlInputDefaultOperator(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-        
-    def test_string_formatter(self):
-        wf = WorkflowBuilder("wf")
-        wf.input("sampleName", str)
-        wf.input("platform", str)
-
-        wf.input(
-            "readGroupHeaderLine",
-            String(),
-            default=StringFormatter(
-                "@RG\\tID:{name}\\tSM:{name}\\tLB:{name}\\tPL:{pl}",
-                name=InputSelector("sampleName"),
-                pl=InputSelector("platform"),
-            ),
-        )
-        wf.step("print", EchoTestTool(inp=wf.readGroupHeaderLine))
-        wf.output("out", source=wf.print)
-        workflow_str, _, _, _ = wf.translate("wdl", to_console=False, render_comments=False)
-        workflow_str = non_blank_lines_str(workflow_str)
-        expected = """\
-version development
-import "tools/EchoTestTool_TEST.wdl" as E
-workflow wf {
-  input {
-    String sampleName
-    String platform
-    String? readGroupHeaderLine = "@RG\\tID:~{sampleName}\\tSM:~{sampleName}\\tLB:~{sampleName}\\tPL:~{platform}"
-  }
-  call E.EchoTestTool as print {
-    input:
-      inp=select_first([readGroupHeaderLine, "@RG\\tID:~{sampleName}\\tSM:~{sampleName}\\tLB:~{sampleName}\\tPL:~{platform}"])
-  }
-  output {
-    File out = print.out
-  }
-}"""
-        self.assertEqual(expected, workflow_str)
-
-
-class TestWdlContainerOverride(unittest.TestCase):
-
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_tool_dict_override(self):
-        expected_container = "container/override"
-
-        tool = SingleTestTool()
-        translated = translate(tool, 'wdl', container_override={tool.id(): expected_container})
-
-        lines = non_blank_lines_list(translated)
-        lines = [ln.strip() for ln in lines]
-        self.assertIn(f'docker: "{expected_container}"', lines)
-
-    def test_tool_string_override(self):
-        expected_container = "container/override"
-        
-        tool = SingleTestTool()
-        translated = tool.translate("wdl", to_console=False, container_override=expected_container)
-
-        lines = non_blank_lines_list(translated)
-        lines = [ln.strip() for ln in lines]
-        self.assertIn(f'docker: "{expected_container}"', lines)
-
-    def test_tool_override_casecheck(self):
-        expected_container = "container/override"
-        tool = SingleTestTool()
-
-        # Assert that our tool id is not UPPER, so when we override with the
-        toolid_upper = tool.id().upper()
-        self.assertNotEqual(tool.id(), toolid_upper)
-        translated = tool.translate(
-            "wdl",
-            to_console=False,
-            container_override={toolid_upper: expected_container},
-        )
-
-        lines = non_blank_lines_list(translated)
-        lines = [ln.strip() for ln in lines]
-        self.assertIn(f'docker: "{expected_container}"', lines)
-
-
-class TestWDLRunRefs(unittest.TestCase):
-
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_two_similar_tools(self):
-        w = WorkflowBuilder("testTwoToolsWithSameId")
-
-        w.input("inp", str)
-        w.step("stp1", BasicTestTool(testtool=w.inp))
-        w.step("stp2", VersionTestTool(testtool=w.inp))
-
-        settings.translate.RENDER_COMMENTS = False
-        mainstr, _, _, _ = translate(w, "wdl", to_console=False, render_comments=False)
-        mainstr = non_blank_lines_str(mainstr)
-
-        expected = """\
-version development
-import "tools/BasicTestTool.wdl" as B
-import "tools/BasicTestTool_v0_0_2.wdl" as B2
-workflow testTwoToolsWithSameId {
-  input {
-    String inp
-  }
-  call B.BasicTestTool as stp1 {
-    input:
-      testtool=inp
-  }
-  call B2.BasicTestTool as stp2 {
-    input:
-      testtool=inp
-  }
-}"""
-
-        self.assertEqual(expected, mainstr)
-
-
-class TestWdlSecondaryTranslation(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
     def test_secondary_connection(self):
         wf = WorkflowBuilder("wf")
         wf.input("ref", SecondaryTestType)
@@ -1301,7 +1671,7 @@ class TestWdlSecondaryTranslation(unittest.TestCase):
         expected = """\
 version development
 import "tools/CatTestTool_TEST.wdl" as C
-workflow wf {
+workflow Wf {
   input {
     File ref
     File ref_txt
@@ -1323,7 +1693,7 @@ workflow wf {
         expected = """\
 version development
 import "tools/CatTestTool_TEST.wdl" as C
-workflow wf {
+workflow Wf {
   input {
     Array[File] ref
     Array[File] ref_txt
@@ -1381,101 +1751,27 @@ workflow wf {
         self.assertEqual(l2, lines[1].strip())
 
 
-class TestWDLCreateFilesAndDirectories(unittest.TestCase):
-
-    initial_params = {
-        "tool": "testCreateFilesAndDirectries",
-        "version": "DEV",
-        "container": "ubuntu",
-        "base_command": "cat",
-        "inputs": [ToolInput("inp", File), ToolInput("name", str)],
-        "outputs": [ToolOutput("out", Stdout)],
-    }
-    
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_create_single_directory(self):
-        command = CommandToolBuilder(
-            **self.initial_params, directories_to_create="test-directory"
-        )
-        commands = WdlTranslator.build_commands_for_file_to_create(command)
-        self.assertEqual(1, len(commands))
-
-        self.assertEqual("mkdir -p 'test-directory'", commands[0].command)
-
-    def test_create_single_directory_from_selector(self):
-        command = CommandToolBuilder(
-            **self.initial_params, directories_to_create=InputSelector("name")
-        )
-        commands = WdlTranslator.build_commands_for_file_to_create(command)
-        self.assertEqual(1, len(commands))
-        self.assertEqual("mkdir -p '~{name}'", commands[0].command)
-
-    def test_create_single_directory_from_operator(self):
-        command = CommandToolBuilder(
-            **self.initial_params, directories_to_create=InputSelector("name") + "-out"
-        )
-        commands = WdlTranslator.build_commands_for_file_to_create(command)
-        self.assertEqual(1, len(commands))
-        self.assertEqual("mkdir -p '~{(name + \"-out\")}'", commands[0].command)
-
-    def test_create_single_file_from_operator(self):
-        command = CommandToolBuilder(
-            **self.initial_params,
-            files_to_create=[("my-path.txt", InputSelector("inp").contents())],
-        )
-        commands = WdlTranslator.build_commands_for_file_to_create(command)
-        self.assertEqual(1, len(commands))
-        expected = """\
-cat <<EOT >> 'my-path.txt'
-~{read_string(inp)}
-EOT"""
-        self.assertEqual(expected, commands[0].command)
-
-    def test_create_single_file_path_from_operator(self):
-        command = CommandToolBuilder(
-            **self.initial_params,
-            files_to_create=[
-                (
-                    StringFormatter("{name}.txt", name=InputSelector("name")),
-                    "this is contents",
-                )
-            ],
-        )
-        commands = WdlTranslator.build_commands_for_file_to_create(command)
-        self.assertEqual(1, len(commands))
-        expected = """\
-cat <<EOT >> '~{name}.txt'
-this is contents
-EOT"""
-        self.assertEqual(expected, commands[0].command)
-
-
 class TestCompleteOperators(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
-
-    def test_list_operators(self):
-        exp = WdlTranslator.unwrap_expression([1, 2, "three"])
-        self.assertEqual('[1, 2, "three"]', exp)
 
     def test_step_input(self):
         workflow_str, _, _, _ = StepInputExpressionTestWF().translate(
             "wdl", to_console=False, render_comments=False
         )
         workflow_str = non_blank_lines_str(workflow_str)
+        print(workflow_str)
         expected = """\
 version development
 import "tools/EchoTestTool_TEST.wdl" as E
-workflow StepInputExpressionTestWF {
+workflow StepInputExpressionTestWf {
   input {
     String? mystring
-    String? mystring_backup
+    String? mystringBackup
   }
   call E.EchoTestTool as print {
     input:
-      inp=if (defined(mystring)) then mystring else mystring_backup
+      inp=if (defined(mystring)) then mystring else mystringBackup
   }
   output {
     File out = print.out
@@ -1516,17 +1812,18 @@ workflow StepInputExpressionTestWF {
         wf.output("out", source=wf.print)
         workflow_str, _, _, _ = wf.translate("wdl", to_console=False, allow_empty_container=True, render_comments=False)
         workflow_str = non_blank_lines_str(workflow_str)
+        print(workflow_str)
         expected = """\
 version development
 import "tools/ArrayStepTool.wdl" as A
-workflow cwl_test_array_step_input {
+workflow CwlTestArrayStepInput {
   input {
     String? inp1
     String? inp2
   }
   call A.ArrayStepTool as print {
     input:
-      inp=[if (defined(inp1)) then inp1 else "default1", if (defined(inp2)) then (inp2 + "_suffix") else ""]
+      inp=[if (defined(inp1)) then inp1 else "default1", if (defined(inp2)) then inp2 + "_suffix" else ""]
   }
   output {
     Array[File] out = print.out
@@ -1537,19 +1834,21 @@ workflow cwl_test_array_step_input {
 
     def test_expression_for_output(self):
         ti = ToolInput("bam", Array(File))
+        to = ToolOutput("bam", File, selector='')
 
-        res = wdl.WdlTranslator.unwrap_expression(
+        res = unwrap_expression(
             If(
                 InputSelector("bam").length().equals(1),
                 InputSelector("bam")[0],
                 "generated",
             ),
+            entity=to,
             for_output=True,
             inputsdict={"bam": ti},
             string_environment=False,
         )
 
-        self.assertEqual('if ((length(bam) == 1)) then bam[0] else "generated"', res)
+        self.assertEqual('if (length(bam) == 1) then bam[0] else "generated"', res)
 
 
 class TestWdlWorkflowInputToOutputConnection(unittest.TestCase):
@@ -1564,7 +1863,7 @@ class TestWdlWorkflowInputToOutputConnection(unittest.TestCase):
         workflow_str = non_blank_lines_str(workflow_str)
         expected = """\
 version development
-workflow wf {
+workflow Wf {
   input {
     String inp
   }
@@ -1582,7 +1881,7 @@ workflow wf {
         workflow_str = non_blank_lines_str(workflow_str)
         expected = """\
 version development
-workflow wf {
+workflow Wf {
   input {
     Int? inp = 0
   }
@@ -1600,7 +1899,7 @@ workflow wf {
         workflow_str = non_blank_lines_str(workflow_str)
         expected = """\
 version development
-workflow wf {
+workflow Wf {
   input {
     String? inp = "hello"
   }
@@ -1611,196 +1910,65 @@ workflow wf {
         self.assertEqual(expected, workflow_str)
 
 
-class TestWdlResourceOperators(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
 
-    def test_1(self):
-        settings.translate.WITH_RESOURCE_OVERRIDES = True
-        tool = OperatorResourcesTestTool()
-        tool_wdl = translate(tool, 'wdl', to_console=False)
+# t = CommandToolBuilder(
+#     tool="test_readcontents",
+#     base_command=["echo", "1"],
+#     inputs=[ToolInput("inp", File)],
+#     outputs=[
+#         ToolOutput(
+#             "out_json", String, selector=InputSelector("inp").read_json()["out"]
+#         ),
+#     ],
+#     container=None,
+#     version="-1",
+# )
+        
 
-        self.assertIn("cpu: select_first([runtime_cpu, (2 * outputFiles), 1])", tool_wdl)
-        self.assertIn(
-            'memory: "~{select_first([runtime_memory, if ((size(inputFile, "MB") > 1024)) then 4 else 2, 4])}G"',
-            tool_wdl,
-        )
+        
+# class TestWdlSelectorsAndGenerators(unittest.TestCase):
+#     def setUp(self) -> None:
+#         reset_global_settings()
 
-    def test_base(self):
-        settings.translate.WITH_RESOURCE_OVERRIDES = True
-        tool = EchoTestTool()
-        tool_wdl = translate(tool, 'wdl', to_console=False)
+    # def test_input_value_cpuselect_stringenv(self):
+    #     # CpuSelector relies on their being a runtime_cpu attribute,
+    #     # this test will assume it's present, and '' will test ensure
+    #     # that it is actually present
+    #     ti = {"runtime_cpu": ToolInput("runtime_cpu", Int(), default=1)}
+    #     inp = CpuSelector()
+    #     self.assertEqual(
+    #         "~{select_first([runtime_cpu, 1])}",
+    #         unwrap_expression(inp, ti, string_environment=True),
+    #     )
 
-        self.assertIn("cpu: select_first([runtime_cpu, 1])", tool_wdl)
-        self.assertIn('memory: "~{select_first([runtime_memory, 4])}G"', tool_wdl)
-        self.assertIn('disks: "local-disk ~{select_first([runtime_disk, 20])} SSD"', tool_wdl)
-
-
-class TestReadContentsOperator(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_read_contents_string(self):
-
-        t = CommandToolBuilder(
-            tool="test_readcontents",
-            base_command=["echo", "1"],
-            inputs=[ToolInput("inp", File)],
-            outputs=[
-                ToolOutput("out", String, glob=ReadContents(Stdout())),
-                ToolOutput(
-                    "out_json", String, selector=InputSelector("inp").read_json()["out"]
-                ),
-            ],
-            container=None,
-            version="-1",
-        )
-
-        t.translate("wdl", allow_empty_container=True)
-
-    def test_read_contents_as_int(self):
-
-        t = CommandToolBuilder(
-            tool="test_readcontents",
-            base_command=["echo", "1"],
-            inputs=[],
-            outputs=[ToolOutput("out", Float, glob=ReadContents(Stdout()).as_float())],
-            container=None,
-            version="-1",
-        )
-
-        t.translate("wdl", allow_empty_container=True)
+    # def test_input_value_cpuselect_nostringenv(self):
+    #     # CpuSelector relies on their being a runtime_cpu attribute,
+    #     # this test will assume it's present, and '' will test ensure
+    #     # that it is actually present
+    #
+    #     ti = {"runtime_cpu": ToolInput("runtime_cpu", Int(), default=1)}
+    #     inp = CpuSelector()
+    #     self.assertEqual(
+    #         "select_first([runtime_cpu, 1])",
+    #         unwrap_expression(inp, ti, string_environment=False),
+    #     )
 
 
-class TestWDLNotNullOperator(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
 
-    def test_workflow_string_not_null(self):
-        w = WorkflowBuilder("wf")
-        w.input("inp", Optional[str])
-        w.output("out", source=w.inp.assert_not_null())
+# class TestWdlTranslatorBuilders(unittest.TestCase):
+#     def setUp(self) -> None:
+#         reset_global_settings()
 
-        wdltool = w.translate("wdl", allow_empty_container=True, to_console=False)[0]
-        wdlline = non_blank_lines_list(wdltool)[-3].strip()
-        self.assertEqual("String out = select_first([inp])", wdlline)
-
-    def test_commandtool_string(self):
-        t = CommandToolBuilder(
-            tool="id",
-            base_command=None,
-            inputs=[ToolInput("inp", Optional[str])],
-            outputs=[
-                ToolOutput("out", str, glob=InputSelector("inp").assert_not_null())
-            ],
-            version=None,
-            container=None,
-        )
-
-        wdltool = t.translate("wdl", allow_empty_container=True, to_console=False)
-        wdlline = non_blank_lines_list(wdltool)[-3].strip()
-        self.assertEqual("String out = select_first([inp])", wdlline)
-
-
-class TestWdlWildcardSelector(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_regular_wildcard_selector(self):
-        out = ToolOutput("out", Array(File), selector=WildcardSelector("*.txt"))
-        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
-        self.assertEqual('Array[File] out = glob("*.txt")', translated_out.get_string())
-
-    def test_regular_wildcard_selector_single(self):
-        out = ToolOutput(
-            "out", File, selector=WildcardSelector("*.txt", select_first=True)
-        )
-        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
-        self.assertEqual('File out = glob("*.txt")[0]', translated_out.get_string())
-
-    def test_regular_wildcard_selector_single_warning(self):
-        out = ToolOutput("out", File, selector=WildcardSelector("*.txt"))
-        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
-        self.assertEqual('File out = glob("*.txt")[0]', translated_out.get_string())
-
-    def test_regular_wildcard_selector_single_optional(self):
-        out = ToolOutput(
-            "out",
-            File(optional=True),
-            selector=WildcardSelector("*.txt", select_first=True),
-        )
-        translated_out = WdlTranslator.translate_tool_outputs([out], {}, out)[0]
-        self.assertEqual(
-            'File? out = if length(glob("*.txt")) > 0 then glob("*.txt")[0] else None',
-            translated_out.get_string(),
-        )
-
-
-class TestUnionType(unittest.TestCase):
-    def setUp(self) -> None:
-        reset_global_settings()
-
-    def test_lots_of_files(self):
-        class TextFile(File):
-            def name(self):
-                return "TextFile"
-
-        uniontype = UnionType(File, TextFile)
-        self.assertEqual("File", uniontype.wdl().get_string())
-
-    def test_file_int_fail(self):
-        uniontype = UnionType(File, int)
-        self.assertRaises(Exception, uniontype.wdl)
-
-
-class ForEachTestWFSelectors(unittest.TestCase):
-
-    def setUp(self) -> None:
-        reset_global_settings()
-    
-    def test_minimal(self):
-        #with TemporaryDirectory() as tmpdir:
-        #    TestForEach().translate("wdl", to_disk=True, export_path=tmpdir)
-        #w, _ = WdlTranslator.translate_workflow(TestForEach())
-        settings.translate.RENDER_COMMENTS = False
-        wf = ForEachTestWF()
-        wf = to_builders(wf)
-        translator = WdlTranslator()
-        translator.translate_workflow_internal(wf)
-        assert translator.main is not None
-        wf_trans = translator.main[1]
-        settings.translate.RENDER_COMMENTS = False
-        workflow_str = wf_trans.get_string()
-        workflow_str = non_blank_lines_str(workflow_str)
-        expected = """\
-version development
-import "tools/EchoTestTool_TEST.wdl" as E
-workflow ForEachTestWF {
-  input {
-    Array[String] inp
-  }
-  scatter (idx in inp) {
-    call E.EchoTestTool as print {
-      input:
-        inp=(idx + "-hello")
-    }
-  }
-  output {
-    Array[File] out = print.out
-  }
-}"""    
-        self.assertEqual(expected.strip(), workflow_str)
-
-
-t = CommandToolBuilder(
-    tool="test_readcontents",
-    base_command=["echo", "1"],
-    inputs=[ToolInput("inp", File)],
-    outputs=[
-        ToolOutput(
-            "out_json", String, selector=InputSelector("inp").read_json()["out"]
-        ),
-    ],
-    container=None,
-    version="-1",
-)
+#     def test_translate_single_to_array_edge(self):
+#         w = WorkflowBuilder("wf")
+#         w.input("inp", str)
+#         stp1 = w.step("stp1", BasicTestTool(testtool=w.inp), ignore_missing=True)
+#         stp2 = w.step(
+#             "stp2", BasicTestTool(arrayInp=stp1.std, testtool=w.inp), ignore_missing=True
+#         )
+#         w = to_builders(w)
+#         settings.translate.RENDER_COMMENTS = False
+#         outp = wdl.translate_step_node(stp2, stp2.id(), {}, set(), None)
+#         outp_str = outp.get_string()
+#         outp_str = non_blank_lines_list(outp_str)
+#         self.assertEqual(f"arrayInp=[{stp1.id()}.std]", outp_str[3].strip())

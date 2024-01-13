@@ -4,7 +4,7 @@ import os
 import regex as re
 from typing import Any, Optional
 
-from janis_core.translations.common import to_builders
+from janis_core.modifications import to_builders
 from janis_core.translations.common import trace
 from janis_core.tests.testtools import (
     InputQualityTestTool,
@@ -209,19 +209,19 @@ def reset_globals() -> None:
     nextflow.params.clear()
 
 def do_preprocessing_workflow(wf: Workflow, ignore_task_inputs: bool=False) -> WorkflowBuilder:
-    from janis_core.translations.common import prune_workflow
-    from janis_core.translations.common import to_builders
+    from janis_core.modifications import simplify
+    from janis_core.modifications import to_builders
     wf = to_builders(wf)
     if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(wf, WorkflowBuilder):
         assert(isinstance(wf, WorkflowBuilder))
-        prune_workflow(wf)
+        simplify(wf)
     if not ignore_task_inputs:
         nextflow.preprocessing.populate_task_inputs(wf, wf)
     assert(isinstance(wf, WorkflowBuilder))
     return wf
 
 def do_preprocessing_tool(tool: CommandTool | PythonTool) -> CommandToolBuilder | PythonTool:
-    from janis_core.translations.common import to_builders
+    from janis_core.modifications import to_builders
     tool = to_builders(tool)
     nextflow.preprocessing.populate_task_inputs(tool)
     assert(isinstance(tool, CommandToolBuilder | PythonTool))
