@@ -28,6 +28,7 @@ import ruamel.yaml
 import cwl_utils.parser.cwl_v1_2 as cwlgen
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd
 from janis_core import WorkflowBase, WorkflowBuilder
 from janis_core.translation_deps.supportedtranslations import SupportedTranslation
 from janis_core.code.codetool import CodeTool
@@ -1183,46 +1184,48 @@ def translate_tool_input(
 
     data_type = toolinput.input_type.cwl_type(default is not None)
 
-    bind_to_commandline = toolinput.position is not None or toolinput.prefix is not None
-    input_binding = (
-        cwlgen.CommandLineBinding(
-            # load_contents=toolinput.load_contents,
-            position=toolinput.position,
-            prefix=toolinput.prefix,
-            separate=toolinput.separate_value_from_prefix,
-            itemSeparator=toolinput.separator,
-            valueFrom=value_from,
-            shellQuote=toolinput.shell_quote,
-        )
-        if bind_to_commandline
-        else None
-    )
-
-    non_optional_dt_component = (
-        [t for t in data_type if t != "null"][0]
-        if isinstance(data_type, list)
-        else data_type
-    )
-
-    # Binding array inputs onto the console
-    # https://www.commonwl.org/user_guide/09-array-inputs/
-    if (
-        bind_to_commandline
-        and toolinput.input_type.is_array()
-        and isinstance(non_optional_dt_component, cwlgen.CommandInputArraySchema)
-    ):
-        if toolinput.prefix_applies_to_all_elements:
-            input_binding.prefix = None
-            input_binding.separate = None
-            nested_binding = cwlgen.CommandLineBinding(
+    input_binding = None
+    if settings.translate.RENDERCMD == ERenderCmd.ON:
+        bind_to_commandline = toolinput.position is not None or toolinput.prefix is not None
+        input_binding = (
+            cwlgen.CommandLineBinding(
                 # load_contents=toolinput.load_contents,
+                position=toolinput.position,
                 prefix=toolinput.prefix,
                 separate=toolinput.separate_value_from_prefix,
-                # item_separator=toolinput.item_separator,
-                # value_from=toolinput.value_from,
+                itemSeparator=toolinput.separator,
+                valueFrom=value_from,
                 shellQuote=toolinput.shell_quote,
             )
-            non_optional_dt_component.inputBinding = nested_binding
+            if bind_to_commandline
+            else None
+        )
+
+        non_optional_dt_component = (
+            [t for t in data_type if t != "null"][0]
+            if isinstance(data_type, list)
+            else data_type
+        )
+
+        # Binding array inputs onto the console
+        # https://www.commonwl.org/user_guide/09-array-inputs/
+        if (
+            bind_to_commandline
+            and toolinput.input_type.is_array()
+            and isinstance(non_optional_dt_component, cwlgen.CommandInputArraySchema)
+        ):
+            if toolinput.prefix_applies_to_all_elements:
+                input_binding.prefix = None
+                input_binding.separate = None
+                nested_binding = cwlgen.CommandLineBinding(
+                    # load_contents=toolinput.load_contents,
+                    prefix=toolinput.prefix,
+                    separate=toolinput.separate_value_from_prefix,
+                    # item_separator=toolinput.item_separator,
+                    # value_from=toolinput.value_from,
+                    shellQuote=toolinput.shell_quote,
+                )
+                non_optional_dt_component.inputBinding = nested_binding
 
     doc = toolinput.doc.doc if toolinput.doc else None
 
@@ -1320,13 +1323,16 @@ def prepare_tool_output_binding(
     loadcontents = requires_content(output.selector)
     requires_std = has_std(output.selector)
 
-    glob, value_from = (
-        [STDOUT_NAME, STDERR_NAME]
-        if requires_std
-        else translate_to_cwl_glob(
-            output.selector, inputsdict, outputtag=output.tag, tool=tool, **debugkwargs
-        )
-    )
+    if requires_std:
+        glob, value_from = STDOUT_NAME, STDERR_NAME
+    else:
+        # wrapped in try except in case we are in --simplification aggressive mode
+        try: 
+            glob, value_from = translate_to_cwl_glob(
+                output.selector, inputsdict, outputtag=output.tag, tool=tool, **debugkwargs
+            )
+        except Exception as e:
+            glob, value_from = None, None
 
     return cwlgen.CommandOutputBinding(
         glob=glob,
@@ -1903,7 +1909,7 @@ def translate_string_formatter(
 
 def translate_to_cwl_glob(glob, inputsdict, tool, **debugkwargs):
     if glob is None:
-        return None
+        return None, None
 
     if isinstance(glob, list):
         return (

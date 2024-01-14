@@ -159,6 +159,7 @@ from janis_core.translations.nextflow.nfgen_utils import to_groovy
 from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 
 from janis_core.translations.nextflow import unwrap_expression
 from janis_core.translations.nextflow.generate.workflow.common import get_common_type
@@ -181,7 +182,8 @@ def reset_globals() -> None:
     translator = NextflowTranslator()
 
     # nextflow specific
-    settings.translate.MODE = 'extended'
+    settings.translate.RENDERCMD = ERenderCmd.ON
+    settings.translate.SIMPLIFICATION = ESimplification.OFF
     settings.translate.nextflow.ENTITY = 'workflow'
     settings.translate.nextflow.MINIMAL_PROCESS = True
 
@@ -212,9 +214,7 @@ def do_preprocessing_workflow(wf: Workflow, ignore_task_inputs: bool=False) -> W
     from janis_core.modifications import simplify
     from janis_core.modifications import to_builders
     wf = to_builders(wf)
-    if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(wf, WorkflowBuilder):
-        assert(isinstance(wf, WorkflowBuilder))
-        simplify(wf)
+    wf = simplify(wf)
     if not ignore_task_inputs:
         nextflow.preprocessing.populate_task_inputs(wf, wf)
     assert(isinstance(wf, WorkflowBuilder))
@@ -639,7 +639,7 @@ class TestTaskInputs(unittest.TestCase):
 
     def setUp(self) -> None:
         reset_globals()
-        settings.translate.MODE = 'regular'
+        settings.translate.SIMPLIFICATION = ESimplification.ON
 
     # no subworkflows
     def test_one_call(self) -> None:

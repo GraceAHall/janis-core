@@ -4,6 +4,7 @@ from typing import Optional, Any
 from inspect import isclass
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 from janis_core import CodeTool, CommandToolBuilder, WorkflowBase, WorkflowBuilder
 from janis_core import Tool
 from janis_core.utils import lowercase_dictkeys
@@ -22,6 +23,7 @@ def translate(
     entity: Tool,
     dest_fmt: str,
     mode: Optional[str] = None,
+    simplification: Optional[str] = None,
 
     # file io
     to_disk: Optional[bool] = None,
@@ -61,7 +63,9 @@ def translate(
     settings.validation.VALIDATE_STRINGFORMATTERS = False
     
     if mode is not None:
-        settings.translate.MODE = mode
+        settings.translate.RENDERCMD = ERenderCmd.fromstr(mode)
+    if simplification is not None:
+        settings.translate.SIMPLIFICATION = ESimplification.fromstr(simplification)
     if as_workflow is not None:
         settings.translate.AS_WORKFLOW = as_workflow
 
@@ -114,19 +118,11 @@ def translate(
     return do_translation(entity)
 
 def perform_modifications(entity: Tool) -> Tool:
-    entity = to_builders(entity)  # convert CommandTool -> CommandToolBuilder etc
-    entity = ensure_containers(entity)  # ensure containers for each tool
+    entity = to_builders(entity)            # convert CommandTool -> CommandToolBuilder etc
+    entity = ensure_containers(entity)      # ensure containers for each tool
     entity = refactor_symbols(entity)
-
-    # simplify workflow (if required)
-    if settings.translate.MODE in ['skeleton', 'regular'] and isinstance(entity, WorkflowBuilder):
-        assert(isinstance(entity, WorkflowBuilder))
-        simplify(entity)
-    
-    # wrap tool in workflow (if required)
-    if settings.translate.AS_WORKFLOW and isinstance(entity, CommandToolBuilder):
-        entity = wrap_tool_in_workflow(entity)
-    
+    entity = simplify(entity)               # remove inputs / outputs (if required)
+    entity = wrap_tool_in_workflow(entity)  # so that inputs file etc will be created for tool 
     return entity
 
 def do_translation(entity: Tool) -> Any:

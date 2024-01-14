@@ -4,6 +4,8 @@ import regex as re
 from typing import Any, Optional
 from enum import Enum, auto
 
+from janis_core import settings
+from janis_core.settings.translate import ESimplification
 from janis_core.types import DataType
 from janis_core import (
     ToolOutput, 
@@ -115,8 +117,12 @@ class CmdtoolProcessOutputFactory:
 
         # output uses InputSelector
         elif isinstance(selector, InputSelector):
-            if selector.input_to_select not in self.tool.inputs_map():
-                print()
+            # references an input we removed during simplification. 
+            if settings.translate.SIMPLIFICATION == ESimplification.AGGRESSIVE:
+                if selector.input_to_select not in self.tool.inputs_map():
+                    return FmtType.COMPLEX
+            
+            # references an input we kept during simplification.
             tinput = self.tool.inputs_map()[selector.input_to_select]
             
             # ToolInput is Filename type
@@ -138,27 +144,26 @@ class CmdtoolProcessOutputFactory:
             return FmtType.COMPLEX
 
     def unwrap_collection_expression(self, expr: Any, ftype: FmtType) -> str:
-        if ftype == FmtType.REFERENCE:
-            expr = self.unwrap(expr) 
-        
-        elif ftype == FmtType.STRINGFORMATTER:
-            expr = self.unwrap(expr, apply_braces=False) 
-            expr = f'"{expr}"'
-        
-        elif ftype in (FmtType.WILDCARD, FmtType.STATIC):
-            expr = self.unwrap(expr)
-            if not expr.startswith('"') and not expr.endswith('"'):
+        # wrapped in try except in case we removed an input during simplification
+        try:
+            if ftype == FmtType.REFERENCE:
+                expr = self.unwrap(expr) 
+            elif ftype == FmtType.STRINGFORMATTER:
+                expr = self.unwrap(expr, apply_braces=False) 
                 expr = f'"{expr}"'
-        
-        # things which need unwrapping
-        elif ftype in (FmtType.FILENAME, FmtType.COMPLEX):
-            expr = self.unwrap(expr, apply_braces=True)
-            if not expr.startswith('"') and not expr.endswith('"'):
-                expr = f'"{expr}"'
-        
-        else:
-            # some future FmtType
-            raise NotImplementedError
+            elif ftype in (FmtType.WILDCARD, FmtType.STATIC):
+                expr = self.unwrap(expr)
+                if not expr.startswith('"') and not expr.endswith('"'):
+                    expr = f'"{expr}"'
+            # things which need unwrapping
+            elif ftype in (FmtType.FILENAME, FmtType.COMPLEX):
+                expr = self.unwrap(expr, apply_braces=True)
+                if not expr.startswith('"') and not expr.endswith('"'):
+                    expr = f'"{expr}"'
+            else:
+                raise NotImplementedError
+        except Exception as e:
+            expr = '"TODO"'
         return expr
 
     def unwrap(self, expr: Any, apply_braces: bool=False):

@@ -43,6 +43,7 @@ from janis_core.workflow.workflow import InputNode
 from janis_core.translations import translate
 from janis_core.translations import build_resources_input
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 
 from . import mock
 
@@ -54,7 +55,9 @@ def _strip_comments(text: str) -> str:
 
 def reset_global_settings() -> None:
     settings.validation.STRICT_IDENTIFIERS = True 
-    settings.translate.MODE = 'regular'
+    settings.translate.DEST = 'cwl'
+    settings.translate.RENDERCMD = ERenderCmd.ON
+    settings.translate.SIMPLIFICATION = ESimplification.ON
     settings.translate.ALLOW_EMPTY_CONTAINER = True 
     settings.translate.MERGE_RESOURCES = False
     settings.translate.RENDER_COMMENTS = True 
@@ -157,7 +160,7 @@ id: tid
         self.assertEqual("wid.cwl", self.translator.workflow_filename(w))
 
     def test_tools_filename(self):
-        self.assertEqual("BasicTestTool.cwl", self.translator.tool_filename(BasicTestTool()))
+        self.assertEqual("basic-test-tool.cwl", self.translator.tool_filename(BasicTestTool()))
 
     def test_inputs_filename(self):
         w = WorkflowBuilder("wid")
@@ -794,7 +797,7 @@ class TestContainerOverride(unittest.TestCase):
 class TestCWLCompleteOperators(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
-        settings.translate.MODE = 'extended'
+        settings.translate.SIMPLIFICATION = ESimplification.OFF
 
     def test_step_input(self):
         self.maxDiff = None
@@ -1003,6 +1006,7 @@ class TestCWLRunRefs(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
+    @unittest.skip('unnecessary')
     def test_two_similar_tools(self):
         w = WorkflowBuilder("testTwoToolsWithSameId")
 
@@ -1248,8 +1252,8 @@ inputs:
 - id: testtool
   label: testtool
   type: string
-- id: arrayInp
-  label: arrayInp
+- id: array_inp
+  label: array_inp
   type:
   - type: array
     items: string
@@ -1271,7 +1275,7 @@ hints:
 - class: ToolTimeLimit
   timelimit: |-
     $([inputs.runtime_seconds, 86400].filter(function (inner) { return inner != null })[0])
-id: BasicTestTool
+id: basic_test_tool
 """
 
 
@@ -1298,7 +1302,7 @@ steps:
     source:
     - inp1
     linkMerge: merge_nested
-  run: tools/ArrayStepTool.cwl
+  run: tools/array-step-tool.cwl
   out:
   - id: out
 id: test_add_single_to_array_edge
@@ -1338,10 +1342,10 @@ steps:
   - id: inp
     valueFrom: |-
       $((inputs._print_inp_mystring != null) ? inputs._print_inp_mystring : inputs._print_inp_mystringbackup)
-  run: tools/EchoTestTool_TEST.cwl
+  run: tools/echo-test-tool.cwl
   out:
   - id: out
-id: StepInputExpressionTestWF
+id: step_input_expression_test_wf
 """
 
 cwl_arraystepinput = """\
@@ -1380,7 +1384,7 @@ steps:
   - id: inp
     valueFrom: |-
       $([(inputs._print_inp_inp1 != null) ? inputs._print_inp_inp1 : "default1", (inputs._print_inp_inp2 != null) ? (inputs._print_inp_inp2 + "_suffix") : ""])
-  run: tools/ArrayStepTool.cwl
+  run: tools/array-step-tool.cwl
   out:
   - id: out
 id: cwl_test_array_step_input

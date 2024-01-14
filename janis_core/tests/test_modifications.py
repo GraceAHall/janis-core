@@ -4,9 +4,10 @@ import unittest
 import os 
 import regex as re
 import yaml
-from typing import Any
+from typing import Any, Optional
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 from janis_core.messages import configure_logging
 from janis_core.messages import load_loglines
 from janis_core.messages import ErrorCategory
@@ -54,7 +55,8 @@ def _reset_global_settings() -> None:
     nextflow.params.clear()
     settings.ingest.SAFE_MODE = True
     settings.testing.TESTMODE = True
-    settings.translate.MODE = 'extended'
+    settings.translate.RENDERCMD = ERenderCmd.ON
+    settings.translate.SIMPLIFICATION = ESimplification.OFF
     settings.translate.DEST = ''
     settings.ingest.SOURCE = ''
     settings.ingest.galaxy.GEN_IMAGES = False
@@ -72,9 +74,9 @@ def _reset_global_settings() -> None:
     settings.translate.ALLOW_EMPTY_CONTAINER = True
     settings.translate.nextflow.ENTITY = 'workflow'
 
-def _run(filepath: str, srcfmt: str, destfmt: str) -> Any:
+def _run(filepath: str, srcfmt: str, destfmt: str, mode: Optional[str]=None, simplification: Optional[str]=None) -> Any:
     internal = ingest(filepath, srcfmt)
-    return translate(internal, destfmt, export_path='./translated')
+    return translate(internal, destfmt, mode, simplification, export_path='./translated')
 
 def _is_nf_process(filecontents: str) -> bool:
     pattern = r'process.*?\{'
@@ -93,15 +95,39 @@ def _is_wdl_task(filecontents: str) -> bool:
         return True
     return False
 
-def _get_cwl_clt_inputs(clt_text: str) -> list[str]:
+def _get_cwl_inputs(clt_text: str) -> list[str]:
     spec = yaml.safe_load(clt_text)
     return spec['inputs']
+
+def _get_cwl_outputs(clt_text: str) -> list[str]:
+    spec = yaml.safe_load(clt_text)
+    return spec['outputs']
 
 def _get_cwl_clt_args(clt_text: str) -> list[str]:
     spec = yaml.safe_load(clt_text)
     return spec['arguments']
 
-def _get_wdl_task_command_lines(task_text: str) -> list[str]:
+def _get_wdl_input_lines(task_text: str) -> list[str]:
+    PATTERN = r'input.*?\{([^}{]*)\}'
+    match = re.search(PATTERN, task_text)
+    if match is None:
+        return []
+    lines = match.group(1).split('\n')
+    lines = [ln.strip() for ln in lines]
+    lines = [ln for ln in lines if ln]
+    return lines
+
+def _get_wdl_output_lines(task_text: str) -> list[str]:
+    PATTERN = r'output.*?\{([^}{]*)\}'
+    match = re.search(PATTERN, task_text)
+    if match is None:
+        return []
+    lines = match.group(1).split('\n')
+    lines = [ln.strip() for ln in lines]
+    lines = [ln for ln in lines if ln]
+    return lines
+
+def _get_wdl_command_lines(task_text: str) -> list[str]:
     """Returns the lines of the process script"""
     out: list[str] = []
     lines = task_text.split('\n')
@@ -141,6 +167,24 @@ def _get_nf_process_input_lines(process_text: str) -> list[str]:
             within_inputs = False
             continue
         if within_inputs and lines[i].strip() != '':
+            out.append(lines[i])
+    
+    return out
+
+def _get_nf_process_output_lines(process_text: str) -> list[str]:
+    """Returns the lines of the process script"""
+    out: list[str] = []
+    lines = process_text.split('\n')
+    within_outputs: bool = False
+    
+    for i in range(len(lines)):
+        if lines[i].strip() == 'output:':
+            within_outputs = True
+            continue
+        if lines[i].strip() == 'script:' and within_outputs:
+            within_outputs = False
+            continue
+        if within_outputs and lines[i].strip() != '':
             out.append(lines[i])
     
     return out
@@ -339,6 +383,41 @@ class TestModes(unittest.TestCase):
 
     def setUp(self) -> None:
         _reset_global_settings()
+        self.flat_wf: WorkflowBuilder = PruneFlatTW()
+    
+    def test_render_cwl(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', mode='full')
+        toolstr = subtools[0][1]
+        self.assertIn('inputBinding', toolstr)
+    
+    def test_render_nxf(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', mode='full')
+        toolstr = subtools[0][1]
+        script_lines = _get_nf_process_script_lines(toolstr)
+        self.assertGreater(len(script_lines), 1)
+    
+    def test_render_wdl(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', mode='full')
+        toolstr = subtools[0][1]
+        script_lines = _get_wdl_command_lines(toolstr)
+        self.assertGreater(len(script_lines), 2)
+    
+    def test_norender_cwl(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', mode='skeleton')
+        toolstr = subtools[0][1]
+        self.assertNotIn('inputBinding', toolstr)
+    
+    def test_norender_nxf(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', mode='skeleton')
+        toolstr = subtools[0][1]
+        script_lines = _get_nf_process_script_lines(toolstr)
+        self.assertEqual(len(script_lines), 1)
+    
+    def test_norender_wdl(self) -> None:
+        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', mode='skeleton')
+        toolstr = subtools[0][1]
+        script_lines = _get_wdl_command_lines(toolstr)
+        self.assertEqual(len(script_lines), 2)
 
 
 
@@ -349,15 +428,15 @@ class TestSimplification(unittest.TestCase):
         _reset_global_settings()
         self.flat_wf: WorkflowBuilder = PruneFlatTW()               # type: ignore
         self.flat_wf: WorkflowBuilder = to_builders(self.flat_wf)   # type: ignore
-        simplify(self.flat_wf)
         self.nested_wf: WorkflowBuilder = PruneNestedTW()               # type: ignore
         self.nested_wf: WorkflowBuilder = to_builders(self.nested_wf)   # type: ignore
-        simplify(self.nested_wf)
 
     ### workflow inputs ###
     
     def test_flat_wf_inputs(self) -> None:
-        actual_inputs = set(list(self.flat_wf.input_nodes.keys()))
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
+        actual_inputs = set(list(wf.input_nodes.keys()))
         expected_inputs = set([
             'inFile1',
             'inFile2',
@@ -442,7 +521,6 @@ class TestSimplification(unittest.TestCase):
         actual_sources = set(list(step.sources.keys()))
         expected_sources = set()
         self.assertEqual(actual_sources, expected_sources)
-
 
     ### tool inputs: flat wf ###
 
@@ -543,269 +621,84 @@ class TestSimplification(unittest.TestCase):
         ])
         self.assertEqual(actual_tinputs, expected_tinputs)
 
-    def test_skeleton_nextflow(self) -> None:
-        settings.translate.MODE = 'skeleton'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, processes = _run(filepath, srcfmt='cwl', destfmt='nextflow')
-        expected_task_input_count = {
-            'basic.nf': 3,
-            'mandatory_input_types.nf': 6,
-            'optional_input_types.nf': 5,
-        }
-        expected_subwf_input_count = {
-            'subworkflow.nf': 6,
-        }
-        expected_script_lengths = {
-            'basic.nf': 5,
-            'mandatory_input_types.nf': 7,
-            'optional_input_types.nf': 6,
-        }
-        for filepath, filecontents in subwfs:
-            actual_lines = _get_nf_subworkflow_input_lines(filecontents)
-            expected = expected_subwf_input_count[filepath]
-            self.assertEqual(len(actual_lines), expected)
-        for filepath, filecontents in processes:
-            print(filecontents)
-            actual_input_lines = _get_nf_process_input_lines(filecontents)
-            actual_script_lines = _get_nf_process_script_lines(filecontents)
-            self.assertEqual(len(actual_input_lines), expected_task_input_count[filepath])
-            self.assertEqual(len(actual_script_lines), expected_script_lengths[filepath])
+    ### integration tests ###
 
-    def test_regular_nextflow(self) -> None:
-        settings.translate.MODE = 'regular'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        maintask, _, subwfs, processes = _run(filepath, srcfmt='cwl', destfmt='nextflow')
-        print(maintask)
-        expected_inputs_count = {
-            'basic.nf': 3,
-            'mandatory_input_types.nf': 6,
-            'optional_input_types.nf': 5,
-        }
-        expected_subwf_input_count = {
-            'subworkflow.nf': 6,
-        }
-        expected_script_lengths = {
-            'basic.nf': 6,
-            'mandatory_input_types.nf': 7,
-            'optional_input_types.nf': 6
-        }
-        for filepath, filecontents in subwfs:
-            actual_lines = _get_nf_subworkflow_input_lines(filecontents)
-            expected = expected_subwf_input_count[filepath]
-            self.assertEqual(len(actual_lines), expected)
-        for filepath, filecontents in processes:
-            if _is_nf_process(filecontents):
-                print(filecontents)
-                actual_input_lines = _get_nf_process_input_lines(filecontents)
-                actual_script_lines = _get_nf_process_script_lines(filecontents)
-                self.assertEqual(len(actual_input_lines), expected_inputs_count[filepath])
-                self.assertEqual(len(actual_script_lines), expected_script_lengths[filepath])
-
-    def test_extended_nextflow(self) -> None:
-        settings.translate.MODE = 'extended'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='nextflow')
-        expected_inputs_count = {
-            'basic.nf': 7,
-            'mandatory_input_types.nf': 6,
-            'optional_input_types.nf': 6,
-        }
-        expected_subwf_input_count = {
-            'subworkflow.nf': 6,
-        }
-        expected_script_lengths = {
-            'basic.nf': 9,
-            'mandatory_input_types.nf': 7,
-            'optional_input_types.nf': 7,
-        }
-        for filepath, filecontents in subwfs:
-            actual_lines = _get_nf_subworkflow_input_lines(filecontents)
-            expected = expected_subwf_input_count[filepath]
-            self.assertEqual(len(actual_lines), expected)
-        for filepath, filecontents in sub_tasks:
-            if _is_nf_process(filecontents):
-                print(filecontents)
-                actual_input_lines = _get_nf_process_input_lines(filecontents)
-                actual_script_lines = _get_nf_process_script_lines(filecontents)
-                self.assertEqual(len(actual_input_lines), expected_inputs_count[filepath])
-                self.assertEqual(len(actual_script_lines), expected_script_lengths[filepath])
-
-    @unittest.skip('not implemented')
-    def test_skeleton_cwl(self) -> None:
-        settings.translate.MODE = 'skeleton'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        maintask, _, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='cwl')
-
+    def test_aggr_workflows(self) -> None:
+        raise NotImplementedError
+        maintask, _, subworkflows, subtools = translate(self.nested_wf, dest_fmt='cwl', simplification='aggressive')
         # main
-        expected_num_clt_inputs = 11
-        clt_inputs = _get_cwl_clt_inputs(maintask)
-        self.assertEqual(len(clt_inputs), expected_num_clt_inputs)
+        expected_io = (10, 2)
+        actual_inputs = _get_cwl_inputs(maintask)
+        actual_outputs = _get_cwl_outputs(maintask)
+        self.assertEqual(len(actual_inputs), expected_io[0])
+        self.assertEqual(len(actual_outputs), expected_io[1])
+        # sub
 
-        # subtasks
-        expected_num_clt_inputs = {
-            'tools/basic_v0_1_0.cwl': 4,
-            'tools/mandatory_input_types_v0_1_0.cwl': 6,
-            'tools/optional_input_types_v0_1_0.cwl': 5,
-            'tools/subworkflow.cwl': 6,
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_cwl_clt(filecontents):
-                clt_inputs = _get_cwl_clt_inputs(filecontents)
-                
-                # checking expected number of clt inputs
-                self.assertEqual(len(clt_inputs), expected_num_clt_inputs[filepath])
+    def test_aggr_tools(self) -> None:
+        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='aggressive')
+        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='aggressive')
+        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='aggressive')
+        expected_tool_io = [
+            (4, 2), # PruneMandatoryTT
+            (1, 1), # PruneInputRefTT
+            (0, 2), # PruneOutputRefTT
+            (1, 3), # PruneOptionalTT
+            (0, 3), # PruneOptional2TT
+        ]
+        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
+            # cwl
+            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
+            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
+            # nxf
+            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
+            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
+            # wdl
+            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
+            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
 
-                # checking clt inputs have inputBindings
-                for inp in clt_inputs:
-                    self.assertNotIn('inputBinding', inp)
-    
-    @unittest.skip('not implemented')
-    def test_skeleton_wdl(self) -> None:
-        # TODO
-        settings.translate.MODE = 'skeleton'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='wdl')
-        for filepath, filecontents in sub_tasks:
-            if _is_wdl_task(filecontents):
-                command_lines = _get_wdl_task_command_lines(filecontents)
-                self.assertEqual(len(command_lines), 2)
-    
-    @unittest.skip('not implemented')
-    def test_regular_cwl1(self) -> None:
-        settings.translate.MODE = 'regular'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        maintask, _, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='cwl')
+    def test_on_tools(self) -> None:
+        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='on')
+        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='on')
+        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='on')
+        expected_tool_io = [
+            (4, 2), # PruneMandatoryTT
+            (2, 1), # PruneInputRefTT
+            (2, 2), # PruneOutputRefTT
+            (4, 3), # PruneOptionalTT
+            (3, 3), # PruneOptional2TT
+        ]
+        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
+            # cwl
+            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
+            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
+            # nxf
+            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
+            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
+            # wdl
+            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
+            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
 
-        # main
-        expected_num_clt_inputs = 12
-        clt_inputs = _get_cwl_clt_inputs(maintask)
-        self.assertEqual(len(clt_inputs), expected_num_clt_inputs)
-
-        # subtasks
-        expected_num_clt_inputs = {
-            'tools/basic_v0_1_0.cwl': 6,
-            'tools/mandatory_input_types_v0_1_0.cwl': 6,
-            'tools/optional_input_types_v0_1_0.cwl': 5,
-            'tools/subworkflow.cwl': 6,
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_cwl_clt(filecontents):
-                clt_inputs = _get_cwl_clt_inputs(filecontents)
-                
-                # checking expected number of clt inputs
-                self.assertEqual(len(clt_inputs), expected_num_clt_inputs[filepath])
-
-                # checking clt inputs have inputBindings
-                for inp in clt_inputs:
-                    self.assertIn('inputBinding', inp)
-    
-    @unittest.skip('not implemented')
-    def test_regular_cwl2(self) -> None:
-        settings.translate.MODE = 'regular'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/ngtax.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='cwl')
-        expected_num_clt_inputs = {
-            'tools/fastqc_v0_1_0.cwl': 2,
-            'tools/files_to_folder_v0_1_0.cwl': 2,
-            'tools/ngtax_v0_1_0.cwl': 9,
-            'tools/ngtax_to_tsv_fasta_v0_1_0.cwl': 4,
-        }
-        expected_input_binding_absence = {
-            'tools/fastqc_v0_1_0.cwl': [],
-            'tools/files_to_folder_v0_1_0.cwl': ['files', 'folders', 'destination'],
-            'tools/ngtax_v0_1_0.cwl': ['sample', 'fragment'],
-            'tools/ngtax_to_tsv_fasta_v0_1_0.cwl': ['metadata', 'input', 'identifier', 'fragment'],
-        }
-        expected_num_clt_args = {
-            'tools/fastqc_v0_1_0.cwl': 2,
-            'tools/files_to_folder_v0_1_0.cwl': 1,
-            'tools/ngtax_v0_1_0.cwl': 4,
-            'tools/ngtax_to_tsv_fasta_v0_1_0.cwl': 8,
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_cwl_clt(filecontents):
-                clt_inputs = _get_cwl_clt_inputs(filecontents)
-                clt_args = _get_cwl_clt_args(filecontents)
-                
-                # checking expected number of clt inputs
-                self.assertEqual(len(clt_inputs), expected_num_clt_inputs[filepath])
-                # checking expected number of clt args
-                self.assertEqual(len(clt_args), expected_num_clt_args[filepath])
-
-                # checking clt inputs have or do not have inputBindings
-                for inp in clt_inputs:
-                    if inp['id'] not in expected_input_binding_absence[filepath]:
-                        self.assertIn('inputBinding', inp)
-                    else:
-                        self.assertNotIn('inputBinding', inp)
-    
-    @unittest.skip('implement me')
-    def test_regular_wdl(self) -> None:
-        settings.translate.MODE = 'regular'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='wdl')
-        expected_num_clt_inputs = {
-            'align_and_tag_v0_1_0': 3,
-            'index_bam_v0_1_0': 1,
-            'mark_duplicates_and_sort_v0_1_0': 3,
-            'merge_bams_samtools_v0_1_0': 2,
-            'name_sort_v0_1_0': 1,
-        }
-        expected_input_binding_absence = {
-            'align_and_tag_v0_1_0': [],
-            'index_bam_v0_1_0': ['bam'],
-            'mark_duplicates_and_sort_v0_1_0': [],
-            'merge_bams_samtools_v0_1_0': ['name'],
-            'name_sort_v0_1_0': [],
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_wdl_task(filecontents):
-                command_lines = _get_wdl_task_command_lines(filecontents)
-                raise NotImplementedError
-
-    @unittest.skip('not implemented')
-    def test_extended_cwl(self) -> None:
-        settings.translate.MODE = 'extended'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='cwl')
-        expected_num_clt_inputs = {
-            'tools/basic_v0_1_0.cwl': 7,
-            'tools/mandatory_input_types_v0_1_0.cwl': 6,
-            'tools/optional_input_types_v0_1_0.cwl': 6,
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_cwl_clt(filecontents):
-                clt_inputs = _get_cwl_clt_inputs(filecontents)
-                
-                # checking expected number of clt inputs
-                self.assertEqual(len(clt_inputs), expected_num_clt_inputs[filepath])
-
-                # checking clt inputs have inputBindings
-                for inp in clt_inputs:
-                    self.assertIn('inputBinding', inp)
-
-    @unittest.skip('implement me')
-    def test_extended_wdl(self) -> None:
-        settings.translate.MODE = 'extended'
-        filepath = f'{CWL_TESTDATA_PATH}/workflows/subworkflow_test/main.cwl'
-        _, _, subwfs, sub_tasks = _run(filepath, srcfmt='cwl', destfmt='wdl')
-        expected_num_clt_inputs = {
-            'align_and_tag_v0_1_0': 3,
-            'index_bam_v0_1_0': 1,
-            'mark_duplicates_and_sort_v0_1_0': 3,
-            'merge_bams_samtools_v0_1_0': 2,
-            'name_sort_v0_1_0': 1,
-        }
-        expected_input_binding_absence = {
-            'align_and_tag_v0_1_0': [],
-            'index_bam_v0_1_0': ['bam'],
-            'mark_duplicates_and_sort_v0_1_0': [],
-            'merge_bams_samtools_v0_1_0': ['name'],
-            'name_sort_v0_1_0': [],
-        }
-        for filepath, filecontents in sub_tasks:
-            if _is_wdl_task(filecontents):
-                raise NotImplementedError
+    def test_off_tools(self) -> None:
+        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='off')
+        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='off')
+        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='off')
+        expected_tool_io = [
+            (4, 2), # PruneMandatoryTT
+            (2, 1), # PruneInputRefTT
+            (2, 2), # PruneOutputRefTT
+            (6, 3), # PruneOptionalTT
+            (6, 3), # PruneOptional2TT
+        ]
+        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
+            # cwl
+            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
+            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
+            # nxf
+            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
+            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
+            # wdl
+            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
+            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
 
 
 

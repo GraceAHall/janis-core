@@ -9,6 +9,7 @@ from janis_core.translation_utils import DTypeType
 from janis_core import WorkflowBuilder, Tool, CodeTool, PythonTool, CommandToolBuilder, TInput
 from janis_core.types import File
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 
 from ... import params
 from ... import naming
@@ -165,11 +166,12 @@ class TaskInputsPopulatorCommandTool(TaskInputsPopulator):
         if not task_inputs.exists(self.tool.id()):
             task_inputs.add_tool(self.tool.id())
         
-        if settings.translate.MODE == 'extended':
+        if settings.translate.SIMPLIFICATION in [ESimplification.AGGRESSIVE, ESimplification.OFF]:
             for tinput in self.tool.tool_inputs():
                 self.update_as_task_input(tinput)
 
-        elif settings.translate.MODE in ['skeleton', 'regular']:
+        elif settings.translate.SIMPLIFICATION == ESimplification.ON:
+            # TODO check this
             collector = TaskInputCollector(self.tool)
             collector.collect(self.main_wf)
             task_input_ids = [x for x in collector.histories.keys()]
@@ -180,6 +182,10 @@ class TaskInputsPopulatorCommandTool(TaskInputsPopulator):
                     self.update_as_static_input(tinput)
                 else:
                     self.update_as_ignored_input(tinput)
+
+        else:
+            raise NotImplementedError
+
         
     def update_as_task_input(self, tinput: TInput) -> None:
         ti_type = 'task_input'
@@ -276,10 +282,12 @@ class TaskInputsPopulatorMainWorkflow(TaskInputsPopulator):
         self.main_wf = main_wf
 
     def populate(self) -> None:
-        if settings.translate.MODE == 'extended':
+        if settings.translate.SIMPLIFICATION == ESimplification.OFF:
             self.populate_task_inputs_extended()
-        elif settings.translate.MODE in ['skeleton', 'regular']:
+        elif settings.translate.SIMPLIFICATION in [ESimplification.AGGRESSIVE, ESimplification.ON]:
             self.populate_task_inputs_pruned()
+        else:
+            raise RuntimeError
 
     def populate_task_inputs_extended(self) -> None:
         all_tinput_ids = set([x.id() for x in self.main_wf.tool_inputs()])

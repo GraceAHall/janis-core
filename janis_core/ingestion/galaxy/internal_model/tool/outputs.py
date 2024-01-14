@@ -74,13 +74,13 @@ class OutputExtractor:
         return prioritised
         
     def define_whitelisted_outputs(self) -> None:
-        if settings.translate.MODE in ['skeleton', 'regular'] and self.gxstep:
-            for out in self.gxstep['outputs']:
-                param = self.xmltool.outputs.get(out['name']) 
-                if param:
-                    self.whitelisted_outputs.append(param)
-        else:
-            self.whitelisted_outputs = self.xmltool.outputs.list()
+        # if settings.translate.MODE in ['skeleton', 'regular'] and self.gxstep:
+        #     for out in self.gxstep['outputs']:
+        #         param = self.xmltool.outputs.get(out['name']) 
+        #         if param:
+        #             self.whitelisted_outputs.append(param)
+        # else:
+        self.whitelisted_outputs = self.xmltool.outputs.list()
         
     def gather_wildcard_outputs(self) -> None:
         # verified vs unverified:

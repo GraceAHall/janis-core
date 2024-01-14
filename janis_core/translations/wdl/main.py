@@ -23,6 +23,7 @@ from typing import Any, Optional
 from .unwrap import unwrap_expression
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 from janis_core.messages import load_loglines
 from janis_core.code.codetool import CodeTool
 from janis_core.modifications import format_case
@@ -330,8 +331,7 @@ class WdlTranslator(TranslatorBase, metaclass=TranslatorMeta):
 
         ins: list[wdl.Input] = self.translate_tool_inputs(tinputs, tinputs_map, tool=tool)
         outs: list[wdl.Output] = self.translate_tool_outputs(toutputs, tinputs_map, tool=tool)
-        command_args = self.translate_tool_args(tool.arguments(), tinputs_map, tool=tool, toolId=tool.id())
-        command_ins = self.build_command_from_inputs(tool.inputs())
+        
 
         commands = [wdl.Task.Command("set -e")]
 
@@ -351,12 +351,12 @@ class WdlTranslator(TranslatorBase, metaclass=TranslatorMeta):
         bc = " ".join(rbc) if isinstance(rbc, list) else rbc
 
         # run mode skeleton: only base command in command
-        if settings.translate.MODE == 'skeleton':
-            pass
-            # commands.append(wdl.Task.Command(bc))
-        # run mode minimal | full: base command + inputs + args in command
-        else:
+        if settings.translate.RENDERCMD == ERenderCmd.ON:
+            command_args = self.translate_tool_args(tool.arguments(), tinputs_map, tool=tool, toolId=tool.id())
+            command_ins = self.build_command_from_inputs(tool.inputs())
             commands.append(wdl.Task.Command(bc, command_ins, command_args))
+        else:
+            commands.append(wdl.Task.Command(bc))
 
         namedwdlouts = {t.name: t for t in outs}
         for to in toutputs:
@@ -364,7 +364,6 @@ class WdlTranslator(TranslatorBase, metaclass=TranslatorMeta):
                 utils.prepare_move_statements_for_output(to, namedwdlouts[to.id()].expression)
             )
 
-        
         # if settings.translate.WITH_CONTAINER:
         #     container = (
         #         WdlTranslator.get_container_override_for_tool(tool)
@@ -404,7 +403,8 @@ class WdlTranslator(TranslatorBase, metaclass=TranslatorMeta):
             for t in tool.tool_inputs()
         ]
 
-        tr_ins = self.translate_tool_inputs(ins)
+        tinputs_map = {i.id(): i for i in ins}
+        tr_ins = self.translate_tool_inputs(ins, tinputs_map, tool=tool)
 
         outs = []
         for t in tool.tool_outputs():
@@ -508,14 +508,18 @@ EOT"""
                     inputsdict=inputsmap,
                 )
             else:
-                expression = unwrap_expression(
-                    o.selector,
-                    tool=tool,
-                    toolid=tool.id(),
-                    entity=o,
-                    inputsdict=inputsmap,
-                    for_output=True
-                )
+                # try except in case referenced input was removed during simplification
+                try:     
+                    expression = unwrap_expression(
+                        o.selector,
+                        tool=tool,
+                        toolid=tool.id(),
+                        entity=o,
+                        inputsdict=inputsmap,
+                        for_output=True
+                    )
+                except Exception as e:
+                    expression = '"TODO"'
 
             outs.append(wdl.Output(wdl_type, o.id(), expression))
             outs.extend(
@@ -703,7 +707,10 @@ EOT"""
         # ^???
         # TODO profiles: eg slurm = mem:"~{memory_size}M",  cloud = memory:"~{memory_size} MiB" 
         rt = wdl.Task.Runtime()
-        rt.add_docker(tool._container)
+        if isinstance(tool, CommandToolBuilder):
+            rt.add_docker(tool._container)
+        elif isinstance(tool, CodeTool) and tool.container() is not None:
+            rt.add_docker(tool.container())
         if 'runtimeCpu' in inmap:
             rt.kwargs["cpu"] = unwrap_expression(
                 InputSelector('runtimeCpu'),
@@ -933,9 +940,13 @@ def translate_wildcard_selector(
     if secondary_format:
         wildcard = apply_secondary_file_format_to_filename(wildcard, secondary_format)
 
-    unwrapped_wildcard = unwrap_expression(
-        wildcard, entity=output, inputsdict=inputsdict, string_environment=False, for_output=True
-    )
+    # try except in case referenced input was removed during simplification
+    try:     
+        unwrapped_wildcard = unwrap_expression(
+            wildcard, entity=output, inputsdict=inputsdict, string_environment=False, for_output=True
+        )
+    except Exception as e:
+        unwrapped_wildcard = '"TODO"'
 
     gl = f"glob({unwrapped_wildcard})"
     if selector.select_first or override_select_first:

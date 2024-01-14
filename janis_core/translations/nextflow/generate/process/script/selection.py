@@ -1,6 +1,7 @@
 
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd
 from janis_core import ToolInput, ToolArgument, CommandTool
 from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
@@ -74,10 +75,10 @@ def prescript_inputs(tool: CommandTool, vmanager: VariableManager) -> list[ToolI
 
 def all_script_inputs_arguments(tool: CommandTool, vmanager: VariableManager) -> list[ToolInput | ToolArgument]:
     ins_args: list[ToolInput | ToolArgument] = []
-    ins_args += script_reference_inputs(tool, vmanager)
-    if settings.translate.MODE != 'skeleton':
+    if settings.translate.RENDERCMD != ERenderCmd.OFF:
+        ins_args += script_reference_inputs(tool, vmanager)
         ins_args += script_value_inputs(tool, vmanager)
-    ins_args += script_arguments(tool)
+        ins_args += script_arguments(tool)
     return ins_args
 
 def script_reference_inputs(tool: CommandTool, vmanager: VariableManager) -> list[ToolInput]:

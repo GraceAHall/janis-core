@@ -337,6 +337,7 @@ class CompleteEntityTracer(Tracer):
         self.do_trace(entity)
 
 
+
 class SourceDatatypeTracer(Tracer):
 
     def __init__(self, tool: Optional[Tool]=None):
@@ -414,7 +415,10 @@ class SourceScatterTracer(Tracer):
         if step.scatter:
             self.source_scatter = True
 
-        
+
+
+
+
 
 class ReferencedVariableTracer(Tracer):
 
@@ -425,10 +429,10 @@ class ReferencedVariableTracer(Tracer):
     def get_datatype(self, entity: Any) -> Optional[DataType]:
         if isinstance(entity, ToolInput):
             return entity.input_type
-        elif isinstance(entity, TInput):
-            return entity.intype
         elif isinstance(entity, InputNode):
             return entity.datatype
+        elif isinstance(entity, TInput):
+            return entity.intype
         return None
     
     def trace(self, entity: Any) -> None:
@@ -451,3 +455,16 @@ class ReferencedVariableTracer(Tracer):
         ### CONTINUE TRACING ###
         self.do_trace(entity)
 
+
+
+        
+class StepOutputTracer(Tracer):
+
+    def __init__(self, tool: Optional[Tool]=None):
+        super().__init__(tool)
+        self.identifiers: set[str] = set()
+
+    def trace(self, entity: Any) -> None:
+        if isinstance(entity, StepOutputSelector):
+            identifier = f'{entity.node.tool.id()}.{entity.tag}'
+            self.identifiers.add(identifier)

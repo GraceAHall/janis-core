@@ -39,9 +39,9 @@ class PruneFlatTW(Workflow):
         self.input('inFile2', File())
         self.input('inFile3', File())
 
-        self.input('inStr1', String)
-        self.input('inStr2', String)
-        self.input('inStr3', String)
+        self.input('inStr1', String())
+        self.input('inStr2', String())
+        self.input('inStr3', String())
 
         self.input('inFileOpt1', File(optional=True))
         self.input('inFileOpt2', File(optional=True))
@@ -250,6 +250,41 @@ class PruneMandatoryTT(PruneTTBase):
             ToolOutput('outFile2', File(), glob='out2*'),
         ]
 
+
+class PruneInputRefTT(PruneTTBase):
+    
+    def inputs(self) -> list[ToolInput]:
+        return [
+            ToolInput("inFile1", File(), position=1),
+            ToolInput(
+                "OutputName", 
+                Filename(
+                    prefix=InputSelector('inFile1', remove_file_extension=True),
+                    extension='.csv'
+                ), 
+                position=2
+            ),
+        ]
+
+    def outputs(self):
+        return [ToolOutput('outFile1', File(), glob='out1*')]
+
+
+class PruneOutputRefTT(PruneTTBase):
+
+    def inputs(self) -> list[ToolInput]:
+        return [
+            ToolInput("inFileOpt1", File(optional=True), position=1),
+            ToolInput("inStrOpt1", String(optional=True), position=2),
+        ]
+
+    def outputs(self):
+        return [
+            ToolOutput("outFile1", File(), selector=InputSelector('inFileOpt1')),
+            ToolOutput("outStr1", String(), selector=InputSelector('inStrOpt1')),
+        ]
+
+
 class PruneOptionalTT(PruneTTBase):
     
     def inputs(self) -> list[ToolInput]:
@@ -257,7 +292,7 @@ class PruneOptionalTT(PruneTTBase):
             ToolInput("inFileOpt1", File(optional=True), position=1),
             ToolInput("inFileOpt2", File(optional=True), position=2),
             ToolInput("inFileOpt3", File(optional=True), position=3),
-            ToolInput("inStrOpt1", String(optional=True), position=4),
+            ToolInput("inStrOpt1", String(optional=True), default="hello", position=4),
             ToolInput("inStrOpt2", String(optional=True), position=5),
             ToolInput("inStrOpt3", String(optional=True), position=6),
         ]
@@ -287,39 +322,3 @@ class PruneOptional2TT(PruneTTBase):
             ToolOutput('outFile2', File(), glob='out2*'),
             ToolOutput('outFile3', File(), glob='out3*'),
         ]
-
-class PruneInputRefTT(PruneTTBase):
-    
-    def inputs(self) -> list[ToolInput]:
-        return [
-            ToolInput("inFile1", File(), position=1),
-            ToolInput(
-                "OutputName", 
-                Filename(
-                    prefix=InputSelector('inFile1', remove_file_extension=True),
-                    extension='.csv'
-                ), 
-                position=2
-            ),
-        ]
-
-    def outputs(self):
-        return [ToolOutput('outFile1', File(), glob='out1*')]
-
-class PruneOutputRefTT(PruneTTBase):
-
-    def inputs(self) -> list[ToolInput]:
-        return [
-            ToolInput("inFileOpt1", File(optional=True), position=1),
-            ToolInput("inStrOpt1", String(optional=True), position=2),
-        ]
-
-    def outputs(self):
-        return [
-            ToolOutput("outFile1", File(), selector=InputSelector('inFileOpt1')),
-            ToolOutput("outStr1", String(), selector=InputSelector('inStrOpt1')),
-        ]
-
-
-    
-

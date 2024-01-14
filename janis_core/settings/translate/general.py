@@ -1,11 +1,43 @@
 
-
+from __future__ import annotations
 from typing import Optional, Any, Tuple
 from janis_core.translation_deps.exportpath import ExportPathKeywords
+from enum import Enum
 
 
-DEST:                       str = ''            # destination language: one of 'nextflow' | 'cwl' | 'wdl'
-MODE:                       str = 'extended'    # one of "skeleton", "regular", "extended"
+class ERenderCmd(Enum):
+    OFF       = "skeleton"
+    ON        = "full"
+
+    @staticmethod
+    def fromstr(thestr: str) -> ERenderCmd:
+        if thestr == "skeleton":
+            return ERenderCmd.OFF
+        elif thestr == "full":
+            return ERenderCmd.ON
+        else:
+            raise ValueError(f"Invalid value for ERenderCmd: {thestr}")
+
+class ESimplification(Enum):
+    AGGRESSIVE  = "aggressive"
+    ON          = "on"
+    OFF         = "off"
+
+    @staticmethod
+    def fromstr(thestr: str) -> ESimplification:
+        if thestr == "aggressive":
+            return ESimplification.AGGRESSIVE
+        elif thestr == "off":
+            return ESimplification.OFF
+        elif thestr == "on":
+            return ESimplification.ON
+        else:
+            raise ValueError(f"Invalid value for ESimplification: {thestr}")
+        
+
+DEST:                       str = ''                                # destination language: one of 'nextflow' | 'cwl' | 'wdl'
+RENDERCMD:                  ERenderCmd = ERenderCmd.ON              # whether to render commmand block in trx tools
+SIMPLIFICATION:             ESimplification = ESimplification.OFF   # whether to simplify tool inputs / args / outputs
 AS_WORKFLOW:                bool = False        # wrap tool translation in workflow
 
 EXPORT_PATH:                str = ExportPathKeywords.default # base output directory

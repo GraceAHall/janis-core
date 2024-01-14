@@ -114,7 +114,7 @@ class SymbolModifier(EntityModifier):
         # tool name
         # tool inputs
         # tool outputs
-        raise NotImplementedError
+        return codetool
     
     def do_cleanup(self, entity: WorkflowBuilder | CommandToolBuilder | CodeTool) -> Any:
         """
@@ -123,7 +123,7 @@ class SymbolModifier(EntityModifier):
         """
         # codetools ugh
         if isinstance(entity, CodeTool):
-            raise RuntimeError
+            return entity 
         
         # generate & assign ids for workflow / cmdtool
         old_id = entity.id()

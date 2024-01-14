@@ -7,6 +7,7 @@ import os
 import shutil
 
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 from janis_core.messages import gather_uuids
 from janis_core.messages import configure_logging
 from janis_core.messages import log_message
@@ -40,7 +41,7 @@ from janis_core.translations import nextflow
 from janis_core.modifications import to_builders
 from janis_core.modifications import simplify
 from janis_core.modifications import wrap_tool_in_workflow
-from janis_core import settings
+
 
 import os 
 import regex as re
@@ -77,7 +78,8 @@ def _reset_global_settings() -> None:
     settings.validation.STRICT_IDENTIFIERS = False
     settings.validation.VALIDATE_STRINGFORMATTERS = False
     settings.testing.TESTMODE = True
-    settings.translate.MODE = 'extended'
+    settings.translate.RENDERCMD = ERenderCmd.ON
+    settings.translate.SIMPLIFICATION = ESimplification.OFF
     settings.translate.ALLOW_EMPTY_CONTAINER = True
     settings.translate.nextflow.ENTITY = 'workflow'
 
@@ -619,7 +621,7 @@ class TestJanisToNextflow(unittest.TestCase):
     @unittest.skipUnless(janis_pipelines_installed(), "janis_pipelines not installed")
     def test_wf_bwa_alignment(self) -> None:
         # settings.translate.MODE = 'extended'
-        settings.translate.MODE = 'regular'
+        settings.translate.SIMPLIFICATION = ESimplification.ON
         # settings.translate.MODE = 'skeleton'
         from janis_pipelines.alignment.alignment import BwaAlignment
         wf = BwaAlignment()
@@ -1105,7 +1107,7 @@ class TestFromGalaxy(unittest.TestCase):
 
     def setUp(self) -> None:
         _reset_global_settings()
-        settings.translate.MODE = 'regular'
+        settings.translate.SIMPLIFICATION = ESimplification.ON
         self.src = 'galaxy'
 
     #############
@@ -1156,7 +1158,7 @@ class TestFromGalaxy(unittest.TestCase):
     
     @pytest.mark.release
     def test_tool_samtools_flagstat_toolshed(self):
-        settings.translate.MODE = 'extended'
+        settings.translate.SIMPLIFICATION = ESimplification.OFF
         uri = 'toolshed.g2.bx.psu.edu/repos/devteam/samtools_flagstat/samtools_flagstat/2.0.4'
         internal = ingest(uri, self.src)
         

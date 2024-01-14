@@ -39,7 +39,9 @@ def looks_like_placeholder_node(node: InputNode, step_id: str, tinput_id: str, t
         return False
     
     # name must look like placeholder
-    if node.id() != f'{step_id}_{tinput_id}':
+    node_id = node.id().lower().replace('-', '').replace('_', '')
+    query_id = f'{step_id}{tinput_id}'.lower().replace('-', '').replace('_', '')
+    if node_id != query_id:
         return False
     
     # datatypes must match

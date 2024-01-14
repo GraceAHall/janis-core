@@ -12,12 +12,14 @@ WDL unwrap
 ############
 
 TODO
-- simplification: removing arguments - check to not remove prefixes [check]
-- simplification: simplify outputs (espc. galaxy)       
-- containers:   implement
-- modes:        implement mode splitting to --mode and --simplification
+- simplification:   testing (add tests fromgalaxy tools)
+- modes:            testing
+- containers:       implement + testing
+- pass test suite.
+- bugfixes for release_janis.
+- release.
+
 - WDL: optional outputs, secondaries, plumbing, basic test suite
-- release. 
 - outdir structure: README.md?
 - figure: workflow results
 - figure: sample translation +outdir (best practices)

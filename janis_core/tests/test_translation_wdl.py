@@ -10,6 +10,7 @@ from janis_core.ingestion import ingest
 from janis_core.translations import translate
 from janis_core.modifications import to_builders
 from janis_core import settings
+from janis_core.settings.translate import ERenderCmd, ESimplification
 import janis_core.translations.wdl as wdl
 from janis_core import (
     WorkflowBuilder,
@@ -78,7 +79,8 @@ CWL_TESTDATA_DIR = os.path.join(os.getcwd(), 'janis_core/tests/data/cwl')
 
 def reset_global_settings() -> None:
     settings.validation.STRICT_IDENTIFIERS = True 
-    settings.translate.MODE = 'extended'
+    settings.translate.RENDERCMD = ERenderCmd.ON
+    settings.translate.SIMPLIFICATION = ESimplification.OFF
     settings.translate.ALLOW_EMPTY_CONTAINER = True 
     settings.translate.MERGE_RESOURCES = False
     settings.translate.RENDER_COMMENTS = True 
@@ -1883,7 +1885,7 @@ workflow Wf {
 version development
 workflow Wf {
   input {
-    Int? inp = 0
+    Int inp = 0
   }
   output {
     Int out = select_first([inp, 0])
@@ -1901,7 +1903,7 @@ workflow Wf {
 version development
 workflow Wf {
   input {
-    String? inp = "hello"
+    String inp = "hello"
   }
   output {
     String out = select_first([inp, "hello"])

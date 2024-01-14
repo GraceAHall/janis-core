@@ -6,8 +6,8 @@ from .main import simplify
 from .main import refactor_symbols
 from .main import wrap_tool_in_workflow
 
-from .prune.history import TaskInputCollector
-from .prune.tools import get_step_referenced_tinputs
+from .prune.history import TaskIOCollector
+from .prune.tools import _get_step_referenced_tinputs
 
 from .symbols import CaseFmt
 from .symbols import format_case
