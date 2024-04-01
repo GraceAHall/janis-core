@@ -17,7 +17,7 @@ from ...model.workflow import NFMainWorkflow
 
 from ... import naming 
 from ... import task_inputs
-from ...task_inputs import TaskInputType
+from janis_core.translations.nextflow.model import VariableType
 
 INDENT = settings.translate.nextflow.NF_INDENT
 CROSS_CHANNEL_NAME = 'ch_cartesian_cross'
@@ -44,12 +44,12 @@ def gen_channels_block(nf_workflow: NFWorkflow, wf: Workflow) -> Optional[NFChan
 
 def should_create_channel_definition(input_node: TInput, wf: Workflow) -> bool:
     # no real workflow input for this input node
-    if not task_inputs.exists(wf.id(), input_node):
+    if not task_inputs.exists(wf.id(), input_node.id()):
         return False
     
-    # only TASK_INPUT and PARAM TaskInputTypes can be channels
-    task_input = task_inputs.get(wf.id(), input_node)
-    if task_input.ti_type in (TaskInputType.STATIC, TaskInputType.IGNORED, TaskInputType.LOCAL):
+    # only INPUT and PARAM VariableTypes can be channels
+    task_input = task_inputs.get(wf.id(), input_node.id())
+    if task_input.vtype in (VariableType.STATIC, VariableType.IGNORED, VariableType.LOCAL):
         return False
     
     # will be working with the datatype type 
@@ -104,7 +104,7 @@ class ChannelDefinitionGenerator:
 
     @property
     def source(self) -> str:
-        task_input = task_inputs.get(self.wf.id(), self.tinput)
+        task_input = task_inputs.get(self.wf.id(), self.tinput.id())
         param_name = task_input.value
         # @secondaryarrays
         if utils.is_secondary_array_type(self.tinput.intype):

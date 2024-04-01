@@ -79,12 +79,6 @@ class Illegals:
     
     ### private methods ###
     def _duplicate_exists(self, text: str) -> bool:
-        # all inputs will have unique ids. same for outputs. 
-        # duplicates can still exist - where an input and an output share the same id.
-        # in this case we want to correct the output id (just a feeling) rather than input id,
-        # so ignore inputs here.
-        if isinstance(self.entity, ToolInput | InputNode):
-            return False
         entities = self._gather_entities_with_id(text)
         if len(entities) == 0:
             return False
@@ -134,10 +128,6 @@ class CwlIllegals(Illegals):
         # cwl doesn't seem to have any illegal symbols? 
         return text 
     
-    def fix_duplicate_symbol(self, text: str) -> str:
-        # duplicates are ok?
-        return text 
-
 
 class NxfIllegals(Illegals):
 

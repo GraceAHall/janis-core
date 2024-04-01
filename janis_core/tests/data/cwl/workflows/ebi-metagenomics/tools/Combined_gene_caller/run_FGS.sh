@@ -11,7 +11,7 @@ done
 
 RUN_DIR=$(dirname $(which FragGeneScan))
 
-${RUN_DIR}/FragGeneScan \
+"${RUN_DIR}"/FragGeneScan \
   -p 4 \
   -t illumina_5 \
   -o ${OUTNAME}  \

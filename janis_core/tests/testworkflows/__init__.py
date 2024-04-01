@@ -27,6 +27,7 @@ from .components import ComponentsMandatoryArrayTestWF
 from .components import ComponentsOptionalArrayTestWF
 
 from .scatter import BasicScatterTestWF
+from .scatter import SimplificationScatterTestWF
 from .scatter import ChainedScatterTestWF
 from .scatter import ScatterDotTestWF
 from .scatter import ScatterCrossTestWF

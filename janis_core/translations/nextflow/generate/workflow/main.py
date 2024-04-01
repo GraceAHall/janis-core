@@ -10,7 +10,7 @@ from ... import unwrap
 
 from ...casefmt import to_case
 from ...variables import init_variable_manager_for_task
-from ...variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 
 from ...model.process import NFProcess
 from ...model.workflow import NFWorkflow
@@ -197,7 +197,7 @@ class SubWFGenerator(WFGenerator):
         out: set[str] = set()
         for tinput in self.wf.tool_inputs():
             cvar = self.vmanager.get(tinput.id()).current
-            if cvar.vtype == VariableType.TASK_INPUT:
+            if cvar.vtype == VariableType.INPUT:
                 out.add(tinput.id())
         return out
 

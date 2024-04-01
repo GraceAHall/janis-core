@@ -1,15 +1,18 @@
 
+import os 
 import re 
 import copy
 from typing import Any, Optional, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from functools import cached_property
+from janis_core.translation_utils import DTypeType, get_dtt
 
-from janis_core.ingestion.common import fetch_container_for_packages
+from janis_core.ingestion.common import fetch_container_for_software_packages
 from janis_core import ToolInput, ToolArgument, ToolOutput, WildcardSelector, CommandToolBuilder, Selector, InputSelector
-from janis_core.types import File, Stdout, Stderr, Directory, DataType
+from janis_core.types import File, Stdout, Stderr, Directory, DataType, String
 from janis_core import settings
+from janis_core.settings.translate.general import ScriptFile
 from janis_core.messages import log_message
 from janis_core.messages import ErrorCategory
 
@@ -87,6 +90,16 @@ class CLTParser:
             is_expression_tool=self.is_expression_tool
         )
         reqs = req_parser.parse()
+
+        # detects all plain text scripts referenced in tool. must occur after CLTRequirementsParser
+        CLTSourceFileParser(
+            cwl_utils=self.cwl_utils,
+            clt=self.clt,
+            entity=self.entity, 
+            tool_uuid=self.tool_uuid, 
+            jtool=jtool,
+            is_expression_tool=self.is_expression_tool
+        ).parse()
         
         jtool._directories_to_create = reqs['directories_to_create'] or None # type: ignore
         jtool._files_to_create = reqs['files_to_create'] or None # type: ignore
@@ -150,6 +163,16 @@ class CLTParser:
             is_expression_tool=self.is_expression_tool
         )
         reqs = req_parser.parse()
+
+        # detects all plain text scripts referenced in tool. must occur after CLTRequirementsParser
+        CLTSourceFileParser(
+            cwl_utils=self.cwl_utils,
+            clt=self.clt,
+            entity=self.entity, 
+            tool_uuid=self.tool_uuid, 
+            jtool=jtool,
+            is_expression_tool=self.is_expression_tool
+        ).parse()
         
         jtool._directories_to_create = reqs['directories_to_create'] or None # type: ignore
         jtool._files_to_create = reqs['files_to_create'] or None # type: ignore
@@ -293,6 +316,7 @@ class CLTEntityParser(ABC):
         ...
 
 
+
 @dataclass
 class CLTRequirementsParser(CLTEntityParser):
 
@@ -376,7 +400,7 @@ class CLTRequirementsParser(CLTEntityParser):
             if 'class' in hint and hint['class'] == 'SoftwareRequirement':
                 packages += self._pull_package_info(hint['packages'])
                 
-        return fetch_container_for_packages(packages)
+        return fetch_container_for_software_packages(packages)
     
     def _pull_package_info(self, softreqs: Any) -> list[Tuple[str, str]]:
         if len(softreqs) == 0:
@@ -728,6 +752,91 @@ class InitialWorkDirRequirementParser:
 
 
 @dataclass
+class CLTSourceFileParser(CLTEntityParser):
+
+    def __init__(self, cwl_utils: Any, clt: Any, entity: Any, tool_uuid: str, jtool: CommandToolBuilder, is_expression_tool: bool=False) -> None:
+        super().__init__(cwl_utils, clt, entity, tool_uuid, is_expression_tool)
+        self.jtool = jtool
+    
+    def fallback(self) -> Any:
+        msg = 'error encountered while identifying helper scripts. skipped process as fallback'
+        log_message(self.tool_uuid, msg, ErrorCategory.FALLBACKS)
+        return None
+
+    def do_parse(self) -> Any:
+        # gather all plain-text references to non-cwl files mentioned in the clt
+        # base command, arguments, inputs
+
+        queries = []
+        # base command
+        if self.jtool._base_command is None:
+            pass
+        elif isinstance(self.jtool._base_command, str):
+            queries += [self.jtool._base_command]
+        elif isinstance(self.jtool._base_command, list):
+            queries += self.jtool._base_command
+        else:
+            raise NotImplementedError
+        
+        # inputs
+        for inp in self.jtool._inputs:
+            dtype_type = get_dtt(inp.input_type)
+            if dtype_type in [DTypeType.FILE, DTypeType.FILENAME] or isinstance(inp.input_type, String):
+                if inp.default is not None and isinstance(inp.default, str):
+                    queries += [inp.default]
+                if inp.value is not None and isinstance(inp.default, str):
+                    queries += [inp.value]
+        
+        # arguments
+        if isinstance(self.jtool._arguments, list):
+            for arg in self.jtool._arguments:
+                if arg.value is not None and isinstance(arg.value, str):
+                    queries += [arg.value]
+
+        for query in queries:
+            if self.looks_like_script(query) and not self.isin_workdir_requirements(query):
+                src = self.format_abspath(query)
+                if not os.path.exists(src):
+                    continue
+                the_file = ScriptFile(
+                    tool_uuid=self.tool_uuid,
+                    src_lang='cwl',
+                    src_abspath=src,
+                    dest_parentdir=None,
+                    is_source=False
+                )
+                settings.general.SCRIPT_FILES.add(the_file)
+
+    def looks_like_script(self, the_string: str) -> bool:
+        PATTERN = r'^([\w./-]+\.sh|[\w./-]+\.pl|[\w./-]+\.py|[\w./-]+\.[Rr])$'
+        if re.match(PATTERN, the_string):
+            return True
+        return False
+    
+    def isin_workdir_requirements(self, filename: str) -> bool:
+        if isinstance(self.jtool._files_to_create, list):
+            raise RuntimeError
+        if isinstance(self.jtool._files_to_create, dict):
+            if filename in self.jtool._files_to_create:
+                return True
+        return False 
+    
+    def format_abspath(self, filename: str) -> str:
+        if filename.startswith('/'):
+            return filename
+        
+        if filename.startswith('./'):
+            filename = filename[2:]
+
+        thisdir = os.getcwd()
+        while filename.startswith('../'):
+            filename = filename[3:]
+            thisdir = os.path.dirname(thisdir)
+        
+        return os.path.join(thisdir, filename)
+        
+
+@dataclass
 class CLTArgumentParser(CLTEntityParser):
 
 
@@ -757,8 +866,8 @@ class CLTArgumentParser(CLTEntityParser):
                 shell_quote=self.entity.shellQuote,
             )
         
-        # this must be set for error messages to be associated with this entity
-        self.uuid = arg.uuid
+        # # this must be set for error messages to be associated with this entity?
+        # self.uuid = arg.uuid
         return arg
 
 

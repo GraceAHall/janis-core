@@ -1,6 +1,6 @@
 
 
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 from inspect import isclass
 
 from janis_core import settings
@@ -11,6 +11,7 @@ from janis_core.utils import lowercase_dictkeys
 from janis_core.translation_deps.supportedtranslations import SupportedTranslation
 
 from janis_core.modifications import to_builders
+from janis_core.modifications import order_steps_topologically
 from janis_core.modifications import ensure_containers
 from janis_core.modifications import simplify
 from janis_core.modifications import refactor_symbols
@@ -22,7 +23,7 @@ from .translationbase import TranslatorBase
 def translate(
     entity: Tool,
     dest_fmt: str,
-    mode: Optional[str] = None,
+    nocmd: Optional[bool] = None,
     simplification: Optional[str] = None,
 
     # file io
@@ -33,7 +34,6 @@ def translate(
     to_console: Optional[bool] = None,
     tool_to_console: Optional[bool] = None,
     write_inputs_file: Optional[bool] = None,
-    source_files: Optional[list[str]] = None,
     
     # inputs
     additional_inputs: Optional[dict[str, str]] = None,
@@ -62,8 +62,8 @@ def translate(
     settings.validation.STRICT_IDENTIFIERS = False
     settings.validation.VALIDATE_STRINGFORMATTERS = False
     
-    if mode is not None:
-        settings.translate.RENDERCMD = ERenderCmd.fromstr(mode)
+    if nocmd is not None:
+        settings.translate.RENDERCMD = ERenderCmd.frombool(nocmd)
     if simplification is not None:
         settings.translate.SIMPLIFICATION = ESimplification.fromstr(simplification)
     if as_workflow is not None:
@@ -94,8 +94,6 @@ def translate(
         settings.translate.WITH_RESOURCE_OVERRIDES = with_resource_overrides
     if write_inputs_file is not None:
         settings.translate.WRITE_INPUTS_FILE = write_inputs_file
-    if source_files is not None:
-        settings.translate.SOURCE_FILES = source_files
     if additional_inputs is not None:
         settings.translate.ADDITIONAL_INPUTS = additional_inputs
     if container_override is not None:
@@ -118,11 +116,12 @@ def translate(
     return do_translation(entity)
 
 def perform_modifications(entity: Tool) -> Tool:
-    entity = to_builders(entity)            # convert CommandTool -> CommandToolBuilder etc
-    entity = ensure_containers(entity)      # ensure containers for each tool
+    entity = to_builders(entity)                # convert CommandTool -> CommandToolBuilder etc
+    entity = ensure_containers(entity)          # ensure containers for each tool
     entity = refactor_symbols(entity)
-    entity = simplify(entity)               # remove inputs / outputs (if required)
-    entity = wrap_tool_in_workflow(entity)  # so that inputs file etc will be created for tool 
+    entity = simplify(entity)                   # remove inputs / outputs (if required)
+    entity = wrap_tool_in_workflow(entity)      # so that inputs file etc will be created for tool 
+    entity = order_steps_topologically(entity)  # ensure containers for each tool (MUST BE LAST)
     return entity
 
 def do_translation(entity: Tool) -> Any:

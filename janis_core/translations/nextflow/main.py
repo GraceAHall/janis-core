@@ -1,15 +1,12 @@
 
-import os
-from typing import Tuple, Any, Optional
+from typing import Any, Optional
 
 from janis_core.tool.commandtool import Tool
 from janis_core.code.codetool import CodeTool
 from janis_core.code.pythontool import PythonTool
 from janis_core.tool.commandtool import CommandToolBuilder
-from janis_core.workflow.workflow import Workflow, WorkflowBase, WorkflowBuilder
+from janis_core.workflow.workflow import Workflow, WorkflowBuilder
 from janis_core.translations.translationbase import TranslatorBase
-from janis_core.translation_deps.supportedtranslations import SupportedTranslation
-from janis_core import InputSelector, File, Directory
 from janis_core import settings
 
 from .model.workflow import NFWorkflow
@@ -18,13 +15,11 @@ from .model.process import NFProcess
 from .generate.process import generate_processes
 from .generate.process import generate_process
 from .generate.workflow import generate_workflows
-# from .generate.files import generate_files 
 from .generate.files import generate_file_process 
 from .generate.files import generate_file_workflow 
 from .casefmt import to_case
+from .task_inputs import populate_task_inputs
 from . import generate
-from . import preprocessing
-
 
 # HELPERS
 def _get_tool(tool_id: str, wf: WorkflowBuilder) -> CommandToolBuilder | CodeTool:
@@ -74,6 +69,7 @@ class NextflowTranslator(TranslatorBase):
         'subworkflows': 'subworkflows',
         'tools': 'modules',
         'helpers': 'templates',
+        'source': 'source'
     }
 
     def __init__(self):
@@ -87,7 +83,7 @@ class NextflowTranslator(TranslatorBase):
         assert(isinstance(wf, WorkflowBuilder))
         settings.translate.nextflow.BASE_OUTDIR = self.basedir
 
-        preprocessing.populate_task_inputs(wf, wf)
+        populate_task_inputs(wf, wf)
         processes = generate_processes(wf)
         workflows = generate_workflows(wf, processes)
         
@@ -117,7 +113,7 @@ class NextflowTranslator(TranslatorBase):
         if self.get_tool(tool) is not None:
             return
         settings.translate.nextflow.ENTITY = 'tool'
-        preprocessing.populate_task_inputs(tool)
+        populate_task_inputs(tool)
         tool_nxf = generate_process(tool)
         self.add_tool(tool, tool_nxf)
 
@@ -135,7 +131,7 @@ class NextflowTranslator(TranslatorBase):
         if self.get_tool(tool) is not None:
             return
         settings.translate.nextflow.ENTITY = 'tool'
-        preprocessing.populate_task_inputs(tool)
+        populate_task_inputs(tool)
         tool_nxf = generate_process(tool)
         self.add_tool(tool, tool_nxf)
     
@@ -220,7 +216,7 @@ class NextflowTranslator(TranslatorBase):
         return settings.translate.nextflow.CONFIG_FILENAME
 
     @staticmethod
-    def tool_filename(tool: str | Tool) -> str:
+    def tool_filename(tool: Tool) -> str:
         toolname = tool if isinstance(tool, str) else tool.id()
         basename = to_case(toolname, settings.translate.nextflow.NF_FILE_CASE)
         return basename + ".nf"

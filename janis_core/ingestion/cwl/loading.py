@@ -69,9 +69,9 @@ def load_cwl_utils_from_version(version: str) -> Any:
     elif version == "v1.2":
         import cwl_utils.parser.cwl_v1_2 as cwlutils
     else:
-        print(
-            f"Didn't recognise CWL version {version}, loading default: {DEFAULT_PARSER_VERSION}"
-        )
+        # print(
+        #     f"Didn't recognise CWL version {version}, loading default: {DEFAULT_PARSER_VERSION}"
+        # )
         cwlutils = load_cwl_utils_from_version(DEFAULT_PARSER_VERSION)
     return cwlutils
 
@@ -83,8 +83,8 @@ def load_etool_to_cltool_from_version(version: str) -> Any:
     elif version == "v1.2":
         from cwl_utils.cwl_v1_2_expression_refactor import etool_to_cltool
     else:
-        print(
-            f"Didn't recognise CWL version {version}, loading default: {DEFAULT_PARSER_VERSION}"
-        )
+        # print(
+        #     f"Didn't recognise CWL version {version}, loading default: {DEFAULT_PARSER_VERSION}"
+        # )
         etool_to_cltool = load_etool_to_cltool_from_version(DEFAULT_PARSER_VERSION)
     return etool_to_cltool

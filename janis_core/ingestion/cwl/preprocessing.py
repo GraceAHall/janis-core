@@ -2,6 +2,7 @@ import os
 from typing import Any
 from .types import cast_cwl_type_to_python
 
+
 def handle_inline_cltool_identifiers(cwl_workflow: Any, cwl_utils: Any) -> Any:
     """
     alters tool ids in a cwl_workflow. 
@@ -39,6 +40,7 @@ https://www.commonwl.org/v1.2/CommandLineTool.html and
 https://www.commonwl.org/v1.2/Workflow.html
 is being converted. 
 """
+
 def convert_cwl_types_to_python(entity: Any, cwl_utils: Any) -> Any:
     converter = CWLTypeConverter(cwl_utils)
     return converter.convert(entity)

@@ -10,7 +10,8 @@ from galaxy.tool_util.deps.mulled.util import build_target
 from janis_core import settings
 
 
-def fetch_container_for_packages(packages: list[Tuple[str, str]]) -> Optional[str]:
+def fetch_container_for_software_packages(packages: list[Tuple[str, str]]) -> Optional[str]:
+    # packages: (name, version)
     # from galaxy <packages>, from cwl SoftwareRequirement, SoftwarePackage.
     # find a useable container from quay.io.
     
@@ -31,12 +32,10 @@ def fetch_container_for_packages(packages: list[Tuple[str, str]]) -> Optional[st
         return f'quay.io/biocontainers/{repo}:{version_tags[0]}'
 
     # multiple packages -> single container
-    elif settings.ingest.SOURCE == 'galaxy':
-        return _fetch_multi_galaxy(packages)
     else:
-        raise RuntimeError
+        return _fetch_multi(packages)
         
-def _fetch_multi_galaxy(packages: list[Tuple[str, str]]) -> Optional[str]:
+def _fetch_multi(packages: list[Tuple[str, str]]) -> Optional[str]:
     items = [build_target(pkg[0], version=pkg[1]) for pkg in packages]
     resource = v2_image_name(items)
     repo = resource.split(':')[0]

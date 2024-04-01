@@ -8,12 +8,10 @@ from janis_core import (
     PythonTool,
 )
 
-from ....scope import Scope
-from ....model.process.outputs import NFProcessOutput
-
 from .factory_cmdtool import CmdtoolProcessOutputFactory
 from .factory_pythontool import PythonToolProcessOutputFactory
 
+from ....model.process.outputs import NFProcessOutput
 from ....variables import VariableManager
 
 def gen_nf_process_outputs(

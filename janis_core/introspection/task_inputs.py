@@ -4,12 +4,13 @@ from typing import Any
 from dataclasses import dataclass, field
 
 from janis_core import WorkflowBuilder, TInput, TOutput, CommandToolBuilder, PythonTool
+from janis_core import translation_utils as utils
 from janis_core.workflow.workflow import StepNode
 from janis_core.operators.selectors import InputNodeSelector
 from janis_core.operators.selectors import StepOutputSelector
-from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
-from janis_core.translations.common.trace import StepOutputTracer
+
+from .trace import StepOutputTracer
 
 
 @dataclass
@@ -98,7 +99,6 @@ class TaskOutputRegister:
         return False
     
 
-
 class TaskIOCollector:
     """
     for a given tool_id, searches the workflow for each step calling that tool.
@@ -108,6 +108,7 @@ class TaskIOCollector:
         self.tool = tool
         self.input_register = {tinp.id(): TaskInputRegister(tinp) for tinp in self.tool.tool_inputs()}
         self.output_register = {tout.id(): TaskOutputRegister(tout) for tout in self.tool.tool_outputs()}
+        self.scatter_targets = set()
         self.step_count: int = 0
 
     def collect(self, wf: WorkflowBuilder) -> None:
@@ -129,6 +130,7 @@ class TaskIOCollector:
             # update task inputs if correct tool
             if step.tool.id() == self.tool.id():
                 self.step_count += 1
+                self.update_scatter_targets(step)
                 self.update_input_register(stp_sources, step)
             
             # recursive for nested workflows
@@ -158,4 +160,7 @@ class TaskIOCollector:
             if src is not None:
                 self.input_register[tinput_id].add_value(step.id(), src)
   
+    def update_scatter_targets(self, step: StepNode) -> None:
+        if step.scatter is not None:
+            self.scatter_targets.update(step.scatter.fields)
 

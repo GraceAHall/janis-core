@@ -102,6 +102,7 @@ class WdlTranslator(TranslatorBase, metaclass=TranslatorMeta):
         'subworkflows': 'subworkflows',
         'tools': 'tasks',
         'helpers': 'scripts',
+        'source': 'source'
     }
 
     def __init__(self):
@@ -867,21 +868,21 @@ EOT"""
         return f"{text}.wdl"
 
     @staticmethod
-    def inputs_filename(workflow):
+    def inputs_filename(workflow: WorkflowBuilder):
         # return workflow.id() + "-inp.json"
         text = workflow.id()
         text = format_case('file', text)
         return f"{text}.json"
 
     @staticmethod
-    def tool_filename(tool):
+    def tool_filename(tool: Tool):
         # return (tool.versioned_id() if isinstance(tool, Tool) else str(tool)) + ".wdl"
         text = tool.id()
         text = format_case('file', text)
         return f"{text}.wdl"
 
     @staticmethod
-    def resources_filename(workflow):
+    def resources_filename(workflow: WorkflowBuilder):
         # return workflow.id() + "-resources.json"
         text = workflow.id()
         text = format_case('file', text)

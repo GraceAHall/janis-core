@@ -11,7 +11,7 @@ from ...model.files import NFFunctionsBlock
 from ...model.files import NFMessageBlock
 from ...model.process import NFProcess
 
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 
 
 get_primary_files_code = """\

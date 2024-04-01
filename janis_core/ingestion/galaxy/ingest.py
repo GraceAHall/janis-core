@@ -8,6 +8,7 @@ import packaging.version
 packaging.version.LegacyVersion = packaging.version.Version
 
 from janis_core import settings
+from janis_core.settings.translate.general import ScriptFile
 from janis_core import Tool
 from janis_core.ingestion.galaxy import runtime
 from janis_core.ingestion.galaxy import internal_mapping
@@ -200,8 +201,6 @@ def _gen_ingest_settings_for_step(metadata: StepMetadata) -> dict[str, Any]:
         }
 
 def _set_wrapper_export_paths(entity: Workflow | Wrapper) -> None:
-    settings.general.SOURCE_FILES: list[Tuple[str, str]] = []  # type: ignore
-
     if isinstance(entity, Workflow):
         for step in entity.steps:
             _set_wrapper_export_path(step.metadata.wrapper)
@@ -211,12 +210,17 @@ def _set_wrapper_export_paths(entity: Workflow | Wrapper) -> None:
         raise RuntimeError
 
 def _set_wrapper_export_path(wrapper: Wrapper) -> None:
-    assert(isinstance(settings.general.SOURCE_FILES, list))
-    dest_dirname = _get_dest_dir(wrapper)
+    dest_dir = _get_dest_dir(wrapper)
     src_files = _get_wrapper_files_src(wrapper)
     for src in src_files:
-        dest = os.path.join(dest_dirname, os.path.basename(src))
-        settings.general.SOURCE_FILES.append((src, dest))
+        the_file = ScriptFile(
+            tool_uuid=wrapper.tool_id,  # TODO this should be uuid not tool_id
+            src_lang='galaxy',
+            src_abspath=src,
+            dest_parentdir=dest_dir,
+            is_source=True
+        )
+        settings.general.SCRIPT_FILES.add(the_file)
 
 def _get_dest_dir(wrapper: Wrapper) -> str:
     if wrapper.revision != 'None':

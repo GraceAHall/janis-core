@@ -2,32 +2,13 @@
 
 from typing import Optional
 
-from janis_core import (
-    DataType,
-    Workflow,
-    CommandTool,
-    PythonTool,
-)
+from janis_core import DataType
+from janis_core import settings
 
 from ..casefmt import to_case
-from ..scope import Scope
-from janis_core import settings
 
 
 ### GENERAL
-
-def get_construct_name(tool: CommandTool | PythonTool | Workflow, scope: Scope) -> str:
-    construct_type = ''
-    depth = len(scope.items)
-    if isinstance(tool, CommandTool) or isinstance(tool, PythonTool):
-        construct_type = 'process'
-    elif isinstance(tool, Workflow) and depth == 1:  # scope = ['main']  (the main workflow)
-        construct_type = 'main_workflow'
-    elif isinstance(tool, Workflow) and depth > 1: # scope = ['main', 'sub', ...] 
-        construct_type = 'sub_workflow'
-    else:
-        raise NotImplementedError
-    return construct_type
 
 def gen_varname_workflow(basename: str) -> str:
     return to_case(basename, settings.translate.nextflow.NF_PROCESS_CASE)

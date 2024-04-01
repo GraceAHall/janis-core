@@ -70,7 +70,7 @@ class ApplesWorkflow(Workflow):
         )
 
         self.output("outStringFile", File, source=self.string_tool.out)
-        self.output("outIntFile", File, source=self.oranges_subworkflow.out)
+        self.output("outIntFile", File, source=self.oranges_subworkflow.the_file)
 
     def friendly_name(self):
         return "TEST: ApplesWorkflow"
@@ -93,7 +93,7 @@ class OrangesWorkflow(Workflow):
             IntTestTool(inp=self.inInt)
         )
 
-        self.output("out", File, source=self.int_tool.out)
+        self.output("the_file", File, source=self.int_tool.out)
 
     def friendly_name(self):
         return "TEST: OrangesWorkflow"

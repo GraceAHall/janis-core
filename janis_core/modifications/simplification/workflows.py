@@ -2,10 +2,10 @@
 
 from janis_core import WorkflowBuilder
 from janis_core.operators import InputNodeSelector
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 
 
-def prune_main_workflow_inputs(wf: WorkflowBuilder) -> None:
+def simplify_main_workflow_inputs(wf: WorkflowBuilder) -> None:
     valid_workflow_inputs: set[str] = set()
     valid_workflow_inputs = valid_workflow_inputs | get_mandatory_input_ids(wf)
     valid_workflow_inputs = valid_workflow_inputs | get_referenced_input_ids(wf)

@@ -9,6 +9,7 @@ from janis_core import (
     ToolArgument, 
     ToolOutput, 
     InputSelector,
+    WildcardSelector,
 )
 
 from janis_core.types import (
@@ -22,80 +23,6 @@ from janis_core.types import (
 
 
 ### WORKFLOWS ###
-
-class PruneFlatTW(Workflow):
-    
-    def tool(self):
-        return "PruneTW"
-    
-    def friendly_name(self):
-        return "TEST: PruneTW"
-
-    def id(self) -> str:
-        return self.__class__.__name__
-
-    def constructor(self):
-        self.input('inFile1', File())
-        self.input('inFile2', File())
-        self.input('inFile3', File())
-
-        self.input('inStr1', String())
-        self.input('inStr2', String())
-        self.input('inStr3', String())
-
-        self.input('inFileOpt1', File(optional=True))
-        self.input('inFileOpt2', File(optional=True))
-        self.input('inFileOpt3', File(optional=True))
-        
-        self.input('inStrOpt1', String(optional=True))
-        self.input('inStrOpt2', String(optional=True))
-        self.input('inStrOpt3', String(optional=True))
-
-        self.step(
-            "stp1", 
-            PruneMandatoryTT(
-                inFile1=self.inFileOpt1,
-                inFile2=self.inFileOpt2,
-                inStr1=self.inStrOpt1,
-                inStr2=self.inStrOpt2,
-            )
-        )
-        self.step(
-            "stp2", 
-            PruneInputRefTT(
-                inFile1=self.inFileOpt1,
-            )
-        )
-        self.step(
-            "stp3", 
-            PruneOutputRefTT()
-        )
-        self.step(
-            "stp4", 
-            PruneOptionalTT(
-                inFileOpt1=self.stp3.outFile1,
-                inStrOpt1=self.stp3.outStr1,
-            )
-        )
-        self.step(
-            "stp5", 
-            PruneOptionalTT(
-                inFileOpt2=self.inFileOpt2,
-                inStrOpt2=self.inStrOpt2,
-            )
-        )
-        self.step(
-            "stp6", 
-            PruneOptional2TT(
-                inStrOpt1="hello",
-                inStrOpt2="there",
-                inStrOpt3="friend",
-            )
-        )
-        
-        self.output("outFile1", File, source=self.stp1.outFile1)
-        self.output("outFile2", File, source=self.stp1.outFile2)
-
 
 class PruneNestedTW(Workflow):
     
@@ -214,6 +141,88 @@ class Sub2TW(Workflow):
         self.output("outFile3", File, source=self.stp1.outFile3)
 
 
+class PruneFlatTW(Workflow):
+    
+    def tool(self):
+        return "PruneTW"
+    
+    def friendly_name(self):
+        return "TEST: PruneTW"
+
+    def id(self) -> str:
+        return self.__class__.__name__
+
+    def constructor(self):
+        self.input('inFile1', File())
+        self.input('inFile2', File())
+        self.input('inFile3', File())
+
+        self.input('inStr1', String())
+        self.input('inStr2', String())
+        self.input('inStr3', String())
+
+        self.input('inFileOpt1', File(optional=True))
+        self.input('inFileOpt2', File(optional=True))
+        self.input('inFileOpt3', File(optional=True))  # never referred to
+        
+        self.input('inStrOpt1', String(optional=True))
+        self.input('inStrOpt2', String(optional=True))
+        self.input('inStrOpt3', String(optional=True)) # never referred to
+
+        self.step(
+            "stp0", 
+            PruneOutputTT(
+                inFile=self.inFile1,
+                inStr=self.inStr1,
+            )
+        )
+        self.step(
+            "stp1", 
+            PruneMandatoryTT(
+                inFile1=self.stp0.outFileOpt1,
+                inFile2=self.inFileOpt2,
+                inStr1=self.inStrOpt1,
+                inStr2=self.inStrOpt2,
+            )
+        )
+        self.step(
+            "stp2", 
+            PruneInputRefTT(
+                inFile1=self.inFileOpt1,
+            )
+        )
+        self.step(
+            "stp3", 
+            PruneOutputRefTT()
+        )
+        self.step(
+            "stp4", 
+            PruneOptionalTT(
+                inFileOpt1=self.stp3.outFile1,
+                inStrOpt1=self.stp3.outStr1,
+            )
+        )
+        self.step(
+            "stp5", 
+            PruneOptionalTT(
+                inFileOpt2=self.inFileOpt2,
+                inStrOpt2=self.inStrOpt2,
+            )
+        )
+        self.step(
+            "stp6", 
+            PruneOptional2TT(
+                inStrOpt1="hello",
+                inStrOpt2="there",
+                inStr3="friend",
+            )
+        )
+        
+        self.output("outFile1", File, source=self.stp1.outFile1)
+        self.output("outFile2", File, source=self.stp1.outFile2)
+        self.output("outStr1", String, source=self.stp0.outStrOpt1)
+
+
 
 ### TOOLS ###
 
@@ -285,6 +294,25 @@ class PruneOutputRefTT(PruneTTBase):
         ]
 
 
+class PruneOutputTT(PruneTTBase):
+
+    def inputs(self) -> list[ToolInput]:
+        return [
+            ToolInput("inFile", File(), position=1),
+            ToolInput("inStr", String(), position=2),
+        ]
+
+    def outputs(self):
+        return [
+            ToolOutput("outFile", File(), glob="*.txt"),
+            ToolOutput("outFileOpt1", File(optional=True), glob="*.txt"),
+            ToolOutput("outFileOpt2", File(optional=True), glob="*.txt"),
+            ToolOutput("outStr", String(), glob="*.txt"),
+            ToolOutput("outStrOpt1", String(optional=True), glob="*.txt"),
+            ToolOutput("outStrOpt2", String(optional=True), glob="*.txt"),
+        ]
+
+
 class PruneOptionalTT(PruneTTBase):
     
     def inputs(self) -> list[ToolInput]:
@@ -313,7 +341,7 @@ class PruneOptional2TT(PruneTTBase):
             ToolInput("inFileOpt3", File(optional=True), position=3),
             ToolInput("inStrOpt1", String(optional=True), position=4),
             ToolInput("inStrOpt2", String(optional=True), position=5),
-            ToolInput("inStrOpt3", String(optional=True), position=6),
+            ToolInput("inStr3", String(), position=6),
         ]
 
     def outputs(self):

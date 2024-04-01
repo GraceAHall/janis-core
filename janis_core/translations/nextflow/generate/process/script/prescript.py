@@ -9,7 +9,7 @@ from janis_core.translation_utils import DTypeType
 
 from ....variables import VariableManager
 from ....variables import VariableHistory
-from ....variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 from ....unwrap import unwrap_expression
 from .... import naming
 
@@ -160,7 +160,7 @@ class PreScriptFormatter(ABC):
     def update_variable(self, new_value: Any) -> None:
         self.vmanager.update(
             tinput_id=self.tinput.id(),
-            vtype_str='local',
+            vtype='local',
             value=new_value
         )
 

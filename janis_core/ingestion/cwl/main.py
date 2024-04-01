@@ -31,26 +31,27 @@ from .parsing.workflow import WorkflowOutputParser
 from .parsing.workflow import WorkflowStepInputsParser
 from .parsing.workflow import WorkflowStepModifierParser
 
-
-
 parsed_cache = {}
 
-def parse(doc: str, base_uri: Optional[str]=None) -> j.Tool:
+def parse(doc: str) -> j.Tool:
+
+    dirpath = os.path.dirname(doc)
+    filename = os.path.basename(doc)
+
     # main entry point to ingest a cwl file    
     initial_wd = os.getcwd()
-    if base_uri:
-        _swap_directory(base_uri)
 
-    parser = CWlParser(doc, base_uri)
+    _swap_directory(dirpath)
+    parser = CWlParser(filename, dirpath)
     cwl_entity = load_cwl_document(parser.doc, parser.version)
     janis_entity = parser.ingest(cwl_entity)
-
-    if base_uri:
-        _revert_directory(initial_wd)
+    _revert_directory(initial_wd)
 
     return janis_entity
 
 def _swap_directory(directory: str) -> None:
+    if directory in ["", "./"]:
+        return 
     if directory.startswith("file://"):
         directory = directory[6:]
     os.chdir(directory)
@@ -129,7 +130,7 @@ class CWlParser:
         if isinstance(cwlstp.run, (self.cwl_utils.CommandLineTool, self.cwl_utils.Workflow)):
             tool = self.ingest(cwlstp.run)
         else:
-            tool = parse(cwlstp.run, os.path.dirname(self.doc))
+            tool = parse(cwlstp.run)
 
         # if _foreach is not None:
         #     wf.has_scatter = True

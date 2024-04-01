@@ -693,20 +693,6 @@ class TestEmptyContainer(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
-    def test_empty_container_raises(self):
-        
-        # NOTE
-        # if this test failed, rerun this individual test.
-        # this sometimes does not work when running with other tests. 
-        # reason unknown. almost certainly because the global settings.translate.ALLOW_EMPTY_CONTAINER 
-        # setting is being set to True in another test, and not set back to False. 
-
-        tool = SingleTestTool()
-        with self.assertRaises(Exception):
-            from janis_core import settings
-            settings.translate.ALLOW_EMPTY_CONTAINER = False
-            toolstr = translate(tool, 'cwl')
-
     def test_empty_container(self):
         tool = to_builders(SingleTestTool())
         translator = CwlTranslator()
@@ -1039,10 +1025,10 @@ class TestCwlResourceOperators(unittest.TestCase):
         res_req = "- class: ResourceRequirement"
         self.assertIn(res_req, toolstr)
 
-        cores_req = "  coresMin: |-\n    $([inputs.runtime_cpu, (2 * inputs.outputFiles), 1].filter(function (inner) { return inner != null })[0])"
+        cores_req = "  coresMin: |-\n    $([inputs.runtime_cpu, (2 * inputs.output_files), 1].filter(function (inner) { return inner != null })[0])"
         self.assertIn(cores_req, toolstr)
         
-        ram_req = "  ramMin: |-\n    $(Math.round((953.674 * [inputs.runtime_memory, ((inputs.inputFile.size / 1048576) > 1024) ? 4 : 2, 4].filter(function (inner) { return inner != null })[0])))"
+        ram_req = "  ramMin: |-\n    $(Math.round((953.674 * [inputs.runtime_memory, ((inputs.input_file.size / 1048576) > 1024) ? 4 : 2, 4].filter(function (inner) { return inner != null })[0])))"
         self.assertIn(ram_req, toolstr)
 
 

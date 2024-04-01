@@ -25,7 +25,7 @@ from ...model.process.inputs import (
     NFValProcessInput,
     NFTupleProcessInput,
 )
-
+from janis_core.translations.nextflow.model import VariableType
 
 def gen_nf_process_inputs(tool: CommandTool | PythonTool) -> list[NFProcessInput]:
     generator = ProcessInputGenerator(tool)
@@ -96,7 +96,9 @@ class ProcessInputGenerator:
                     self.process_inputs.append(new_input)
         
     def generate_regular_inputs(self) -> None:
-        tinput_ids = task_inputs.task_inputs(self.tool.id())
+        taskinps = task_inputs.getall(self.tool.id())
+        taskinps = [x for x in taskinps if x.vtype == VariableType.INPUT]
+        tinput_ids = set([x.tinput_id for x in taskinps])
         tinputs = nfgen_utils.items_with_id(self.tool.inputs(), tinput_ids)
         
         for inp in tinputs:
@@ -177,7 +179,7 @@ class ProcessInputGenerator:
     #     return new_input
     
     def create_path_input_file_pair_array(self, inp: ToolInput | TInput) -> NFPathProcessInput:
-        ti = task_inputs.get(self.tool.id(), inp)
+        ti = task_inputs.get(self.tool.id(), inp.id())
         name = ti.value
         assert(isinstance(name, str))
         new_input = NFPathProcessInput(name=name, tinput_id=inp.id(), dtype=self.dtype)
@@ -185,7 +187,7 @@ class ProcessInputGenerator:
     
     def create_tuple_input_file_pair(self, inp: ToolInput | TInput) -> NFTupleProcessInput:
         # tuple sub-element for each file
-        ti = task_inputs.get(self.tool.id(), inp)
+        ti = task_inputs.get(self.tool.id(), inp.id())
         assert(ti.value)
         assert(len(ti.value) == 2)
         
@@ -198,7 +200,7 @@ class ProcessInputGenerator:
         return new_input
 
     def create_path_input(self, inp: ToolInput | TInput) -> NFPathProcessInput:
-        ti = task_inputs.get(self.tool.id(), inp)
+        ti = task_inputs.get(self.tool.id(), inp.id())
         name = ti.value
         assert(isinstance(name, str))
         presents_as = None
@@ -212,7 +214,7 @@ class ProcessInputGenerator:
             if inp.presents_as:
                 raise NotImplementedError
                 presents_as = inp.presents_as
-        ti = task_inputs.get(self.tool.id(), inp)
+        ti = task_inputs.get(self.tool.id(), inp.id())
         name = ti.value
         assert(isinstance(name, str))
         new_input = NFValProcessInput(name=name, tinput_id=inp.id(), dtype=self.dtype)

@@ -5,6 +5,7 @@ from typing import Tuple, Any,Optional
 
 from janis_core import Logger
 from janis_core import settings
+from janis_core.settings.translate.general import ScriptFile
 from janis_core.translation_deps.exportpath import ExportPathKeywords
 from janis_core.ingestion.common import safe_init_folder
 
@@ -78,53 +79,67 @@ def write_workflow_to_disk(
         safe_init_folder(os.path.join(basedir, subdir))
 
     # writing main workflow
+    Logger.info(f"Writing main workflow to \'{basedir}\'")
     _write_file(tup_main, basedir, 'main', None)
     
-    # writing tools
-    for tup_tool in tup_tools:
-        _write_file(tup_tool, basedir, 'tools', outdir_structure['tools'])
-    
-    # writing subworkflows
-    for tup_subworkflow in tup_subworkflows:
-        _write_file(tup_subworkflow, basedir, 'subworkflows', outdir_structure['subworkflows'])
-
     # writing inputs file
     if settings.translate.WRITE_INPUTS_FILE:
+        Logger.info(f"Writing inputs file to \'{basedir}\'")
         _write_file(tup_inputs, basedir, 'inputs', None)
     else:
         Logger.log("Skipping writing inputs config file")
 
     # writing resources file
     if tup_resources is not None:
+        Logger.info(f"Writing resources file to \'{basedir}\'")
         if settings.translate.WITH_RESOURCE_OVERRIDES and not settings.translate.MERGE_RESOURCES:
             _write_file(tup_resources, basedir, 'resources', None)
         else:
             Logger.log("Skipping writing resources config file")
+    
+    # writing tools
+    if tup_tools:
+        Logger.info(f"Writing tools to \'{os.path.join(basedir, outdir_structure['tools'])}\'")
+        for tup_tool in tup_tools:
+            _write_file(tup_tool, basedir, 'tools', outdir_structure['tools'])
+    
+    # writing subworkflows
+    if tup_subworkflows:
+        Logger.info(f"Writing subworkflows to \'{os.path.join(basedir, outdir_structure['subworkflows'])}\'")
+        for tup_subworkflow in tup_subworkflows:
+            _write_file(tup_subworkflow, basedir, 'subworkflows', outdir_structure['subworkflows'])
 
     # writing helper files
     for tup_helper in tup_helpers:
+        Logger.info(f"Writing script/helper files to \'{os.path.join(basedir, outdir_structure['helpers'])}\'")
         _write_file(tup_helper, basedir, 'helpers', outdir_structure['helpers'])
 
-    # writing galaxy source files (specific to galaxy)
-    if settings.ingest.SOURCE == 'galaxy':
-        _write_galaxy_source_files_to_disk(basedir)
+    # writing source files 
+    _write_source_files_to_disk(basedir, outdir_structure)
 
 
-def _write_galaxy_source_files_to_disk(basedir: str) -> None:
+def _write_source_files_to_disk(basedir: str, outdir_structure: dict[str, Any]) -> None:
     # TODO permissions
     # copying source files - this one is a bit weird & specific to galaxy.  
-    if settings.general.SOURCE_FILES is not None:
-        # create source folder in basedir
-        source_dir = os.path.join(basedir, 'source')
-        if not os.path.isdir(source_dir):
-            os.mkdir(source_dir)
-        # copy files
-        for src, dest in settings.general.SOURCE_FILES:
-            dest = os.path.join(source_dir, dest)
-            if not os.path.isdir(os.path.dirname(dest)):
-                os.mkdir(os.path.dirname(dest))
-            shutil.copy2(src, dest)
+    
+    def _get_dest_abspath(basedir: str, outdir_structure: dict[str, Any], the_file: ScriptFile) -> str:
+        if the_file.is_source:
+            parentdir = os.path.join(basedir, outdir_structure['source'])
+        else:
+            parentdir = os.path.join(basedir, outdir_structure['helpers'])
+        
+        if the_file.dest_parentdir is not None:
+            parentdir = os.path.join(parentdir, the_file.dest_parentdir)
+        
+        filename = os.path.basename(the_file.src_abspath)
+        return os.path.join(parentdir, filename)
 
+    if settings.general.SCRIPT_FILES.all:
+        for the_file in settings.general.SCRIPT_FILES.all:
+            dest = _get_dest_abspath(basedir, outdir_structure, the_file)
+            if not os.path.isdir(os.path.dirname(dest)):
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copy2(the_file.src_abspath, dest)
 
 def _write_file(tup_file: Tuple[str, str], basedir: str, ftype: str, fsubdir: str | None) -> None:
     filename, contents = tup_file
@@ -136,7 +151,7 @@ def _write_file(tup_file: Tuple[str, str], basedir: str, ftype: str, fsubdir: st
     filepath = os.path.join(outdir, filename)
 
     # write to disk
-    Logger.info(f"Writing {ftype} to '{outdir}'")
+    
     with open(filepath, "w+") as f:
         Logger.log(f"Writing {filename} to disk")
         f.write(contents)

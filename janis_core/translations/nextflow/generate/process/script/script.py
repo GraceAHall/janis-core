@@ -9,7 +9,7 @@ from janis_core.translation_utils import DTypeType
 
 from ....variables import VariableManager
 from ....variables import VariableHistory
-from ....variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 from ....variables import Variable
 
 from .ctype import CType, get_ctype

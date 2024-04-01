@@ -535,7 +535,7 @@ class TestShellCommandParser(unittest.TestCase):
             'set -e',
             'echo \\',
             '{inputs.inInt} \\',
-            '{inputs.inStr} \\',
+            '{inputs.inFilePath} \\',
             '{inputs.inBool} \\',
             '--in-file={inputs.inFile} \\',
             '{inputs.inFileOpt} \\',

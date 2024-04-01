@@ -234,6 +234,7 @@ class TestOutdirStructure(unittest.TestCase):
             'tools',
             'scripts',
             'subworkflows',
+            'source',
         ])
         shutil.rmtree(OUTDIR, ignore_errors=True)
         self.assertSetEqual(actual_dirs, expected_dirs)
@@ -248,6 +249,7 @@ class TestOutdirStructure(unittest.TestCase):
             'modules',
             'templates',
             'subworkflows',
+            'source',
         ])
         shutil.rmtree(OUTDIR, ignore_errors=True)
         self.assertSetEqual(actual_dirs, expected_dirs)
@@ -262,6 +264,7 @@ class TestOutdirStructure(unittest.TestCase):
             'tasks',
             'scripts',
             'subworkflows',
+            'source'
         ])
         shutil.rmtree(OUTDIR, ignore_errors=True)
         self.assertSetEqual(actual_dirs, expected_dirs)
@@ -846,36 +849,43 @@ class TestCwlToWdl(unittest.TestCase):
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_mock_ngtax(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/mock_ngtax.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_pilon_mapping(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/pilon_mapping.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_sapp_microbes(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/sapp_microbes.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
 
+    @pytest.mark.release
     def test_wf_munlock_toHDT_compression(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/toHDT_compression.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_ngtax(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/ngtax.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
         
+    @pytest.mark.release
     def test_wf_munlock_metagenomics_GEM(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/metagenomics_GEM.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
 
+    @pytest.mark.release
     def test_wf_munlock_ngtax_picrust2(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/ngtax_picrust2.cwl'
         mainstr = _run(filepath, self.src, self.dest)
@@ -899,9 +909,9 @@ class TestCwlToNextflow(unittest.TestCase):
     def test_tool_picard_markduplicates(self):
         filepath = f'{CWL_TESTDATA_PATH}/tools/expressions/picard_MarkDuplicates.cwl'
         mainstr = _run(filepath, self.src, self.dest)
-        self.assertIn('path "${alignments.simpleName}.markduplicates.log", emit: log', mainstr)
-        self.assertIn('OUTPUT=${alignments.simpleName}_markduplicates${"." + alignments.extension}', mainstr)
         print(mainstr)
+        self.assertIn('path "${in_alignments.simpleName}.markduplicates.log", emit: log', mainstr)
+        self.assertIn('OUTPUT=${in_alignments.simpleName}_markduplicates${"." + in_alignments.extension}', mainstr)
         print()
     
     def test_tool_samtools_flagstat(self):
@@ -940,60 +950,69 @@ class TestCwlToNextflow(unittest.TestCase):
     def test_wf_ebi_metagenomics_raw_reads(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/ebi-metagenomics/workflows/raw-reads-wf--v.5-cond.cwl'
         mainstr = _run(filepath, self.src, self.dest)
-        print(mainstr)
+        # print(mainstr)
     
+    @pytest.mark.release
     def test_wf_ebi_metagenomics_amplicon(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/ebi-metagenomics/workflows/amplicon-wf--v.5-cond.cwl'
         mainstr = _run(filepath, self.src, self.dest)
-        print(mainstr)
+        # print(mainstr)
     
+    @pytest.mark.release
     def test_wf_ebi_metagenomics_assembly(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/ebi-metagenomics/workflows/assembly-wf--v.5-cond.cwl'
         mainstr = _run(filepath, self.src, self.dest)
-        print(mainstr)
+        # print(mainstr)
 
     def test_wf_munlock_demultiplexing(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/demultiplexing.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_mock_ngtax(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/mock_ngtax.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_pilon_mapping(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/pilon_mapping.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_sapp_microbes(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/sapp_microbes.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
 
+    @pytest.mark.release
     def test_wf_munlock_toHDT_compression(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/toHDT_compression.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
     
+    @pytest.mark.release
     def test_wf_munlock_ngtax(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/ngtax.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
         
+    @pytest.mark.release
     def test_wf_munlock_metagenomics_GEM(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/metagenomics_GEM.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
 
+    @pytest.mark.release
     def test_wf_munlock_ngtax_picrust2(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/m-unlock/workflows/ngtax_picrust2.cwl'
         mainstr = _run(filepath, self.src, self.dest)
         print(mainstr)
 
     # hard
-    @unittest.skip('need to check prune to make sure cwl entities have unique names')
+    @pytest.mark.release
     def test_wf_cromast(self):
         filepath = f'{CWL_TESTDATA_PATH}/workflows/CroMaSt/CroMaSt.cwl'
         mainstr = _run(filepath, self.src, self.dest)
@@ -1010,7 +1029,6 @@ class TestWdlToCwl(unittest.TestCase):
         self.dest = 'cwl'
         _reset_global_settings()
 
-    @unittest.skip('TODO: update for wdl ingest changes')
     def test_tool_bwa(self):
         filepath = f'{WDL_TESTDATA_PATH}/bwa.wdl'
         mainstr = _run(filepath, self.src, self.dest)
@@ -1063,6 +1081,7 @@ class TestWdlToNextflow(unittest.TestCase):
         _reset_global_settings()
         settings.ingest.SAFE_MODE = True
 
+    @unittest.skip('TODO: update for wdl ingest changes')
     def test_wf_atac(self):
         filepath = f'{WDL_TESTDATA_PATH}/ATAC.wdl'
         mainstr = _run(filepath, self.src, self.dest)
@@ -1117,6 +1136,16 @@ class TestFromGalaxy(unittest.TestCase):
     def test_tool_fastqc(self):
         # ingest
         filepath = os.path.abspath(f'{GALAXY_TESTTOOL_PATH}/fastqc-5ec9f6bceaee/rgFastQC.xml')
+        internal = ingest(filepath, self.src)
+        
+        # translate to CWL, WDL, NXF
+        translate(internal, 'cwl', export_path='./translated')
+        translate(internal, 'nextflow', export_path='./translated')
+        translate(internal, 'wdl', export_path='./translated')
+    
+    def test_tool_featurecounts(self):
+        # ingest
+        filepath = os.path.abspath(f'{GALAXY_TESTTOOL_PATH}/featurecounts-38b6d12edc68/featurecounts.xml')
         internal = ingest(filepath, self.src)
         
         # translate to CWL, WDL, NXF

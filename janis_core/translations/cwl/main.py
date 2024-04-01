@@ -91,6 +91,7 @@ class CwlTranslator(TranslatorBase, metaclass=TranslatorMeta):
         'subworkflows': 'subworkflows',
         'tools': 'tools',
         'helpers': 'scripts',
+        'source': 'source'
     }
 
     def __init__(self):
@@ -98,7 +99,7 @@ class CwlTranslator(TranslatorBase, metaclass=TranslatorMeta):
 
     ### JANIS -> OUTPUT MODEL MAPPING ###
 
-    @try_catch_translate(type="workflow")
+    # @try_catch_translate(type="workflow")
     def translate_workflow_internal(self, wf: WorkflowBuilder, is_nested_tool: bool=False) -> None:
         # check we haven't already translated this
         if self.get_subworkflow(wf) is not None:

@@ -16,8 +16,8 @@ class XMLTool:
     Does not depend on lower level representations or parsing.
     Permits storing and retreiving data about the tool.
     """
-    metadata: XMLMetadata
     raw_command: str
+    metadata: XMLMetadata
     configfiles: list[XMLConfigfile]
     scripts: list[XMLScript]
     inputs: XMLParamRegister

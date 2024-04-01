@@ -66,7 +66,6 @@ class ShellCommandParser(CommandParser):
     def parse_files_to_create(self) -> dict[str, Any]:
         res, success = parse_expr(self.task.command, self.task, self.cmdtool)
         if not success:
-            print(str(res))
             raise RuntimeError
         return {"script.sh": res}
     

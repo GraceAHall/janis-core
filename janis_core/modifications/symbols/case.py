@@ -33,13 +33,13 @@ def split_underscores(words: list[str]) -> list[str]:
     out: list[str] = []
     for word in words:
         out += word.split('_')
-    return out
+    return [x for x in out if x != '']
 
 def split_hyphens(words: list[str]) -> list[str]:
     out: list[str] = []
     for word in words:
         out += word.split('-')
-    return out
+    return [x for x in out if x != '']
 
 def split_lower_upper(words: list[str]) -> list[str]:
     out: list[str] = []

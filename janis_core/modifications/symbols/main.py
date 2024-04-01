@@ -2,7 +2,7 @@
 from typing import Any
 from collections import defaultdict
 
-from janis_core import CommandToolBuilder, CodeTool, WorkflowBuilder
+from janis_core import CommandToolBuilder, CodeTool, WorkflowBuilder, StringFormatter, Selector
 from ..EntityModifier import EntityModifier
 from .case import format_case
 from .illegals import fix_illegals
@@ -52,9 +52,10 @@ class SymbolModifier(EntityModifier):
         if self.already_processed(workflow):
             return workflow
         
+        
         # workflow inputs
         new_inputs = {}
-        for winp in workflow.input_nodes.values():
+        for winp in sorted(workflow.input_nodes.values(), key=lambda x: x.id()):
             old_id = winp.id()
             new_id = self.generate_new_id(workflow, winp, old_id)
             winp.identifier = new_id
@@ -64,17 +65,17 @@ class SymbolModifier(EntityModifier):
 
         # workflow steps
         new_steps = {}
-        for wstep in workflow.step_nodes.values():
+        for wstep in sorted(workflow.step_nodes.values(), key=lambda x: x.id()):
             old_id = wstep.id()
             new_id = self.generate_new_id(workflow, wstep, old_id)
             wstep.identifier = new_id
             new_steps[new_id] = wstep
             self.id_map[wstep.uuid] = (old_id, new_id)
         workflow.step_nodes = new_steps
-
+        
         # workflow outputs
         new_outputs = {}
-        for wout in workflow.output_nodes.values():
+        for wout in sorted(workflow.output_nodes.values(), key=lambda x: x.id()):
             old_id = wout.id()
             new_id = self.generate_new_id(workflow, wout, old_id)
             self.id_map[wout.uuid] = (old_id, new_id)
@@ -90,13 +91,13 @@ class SymbolModifier(EntityModifier):
             return cmdtool
         
         # only address inputs/outputs at this stage
-        for inp in cmdtool._inputs:
+        for inp in sorted(cmdtool._inputs, key=lambda x: x.id()):
             old_id = inp.id()
             new_id = self.generate_new_id(cmdtool, inp, old_id)
             inp.tag = new_id
             self.id_map[inp.uuid] = (old_id, new_id)
-
-        for out in cmdtool._outputs:
+        
+        for out in sorted(cmdtool._outputs, key=lambda x: x.id()):
             old_id = out.id()
             new_id = self.generate_new_id(cmdtool, out, old_id)
             out.tag = new_id
@@ -158,6 +159,32 @@ class SymbolModifier(EntityModifier):
         # ToolOutputs can involve Selectors
         for out in cmdtool._outputs:
             SelectorUpdater(cmdtool, self.id_map).trace(out)
+        
+        # files / directories to create can involve Selectors
+        if cmdtool._files_to_create is not None:
+            assert isinstance(cmdtool._files_to_create, dict)
+            for contents in cmdtool._files_to_create.values():
+                if isinstance(contents, StringFormatter):
+                    SelectorUpdater(cmdtool, self.id_map).trace(contents)
+        
+        if cmdtool._directories_to_create is not None:
+            if isinstance(cmdtool._directories_to_create, list):
+                items = cmdtool._directories_to_create
+            else:
+                items = [cmdtool._directories_to_create]
+            for item in items:
+                if isinstance(item, Selector):
+                    SelectorUpdater(cmdtool, self.id_map).trace(item)
+
+        # Tool resources can involve Selectors
+        if cmdtool._cpus is not None:
+            SelectorUpdater(cmdtool, self.id_map).trace(cmdtool._cpus)
+        if cmdtool._disk is not None:
+            SelectorUpdater(cmdtool, self.id_map).trace(cmdtool._disk)
+        if cmdtool._memory is not None:
+            SelectorUpdater(cmdtool, self.id_map).trace(cmdtool._memory)
+        if cmdtool._time is not None:
+            SelectorUpdater(cmdtool, self.id_map).trace(cmdtool._time)
     
     def do_cleanup_workflow(self, workflow: WorkflowBuilder) -> Any:
         # invert id_map so we can quickly fetch uuid from old_id
@@ -169,8 +196,14 @@ class SymbolModifier(EntityModifier):
         for step in workflow.step_nodes.values():
             self.do_cleanup(step.tool)
         
-        # step inputs/when can involve Selectors
+        # step inputs/when/scatter can involve Selectors
         for step in workflow.step_nodes.values():
+            # fix scatter fields
+            if step.scatter is not None and not isinstance(step.tool, CodeTool):
+                updater = SelectorUpdater(workflow, self.id_map)
+                id_map = updater.input_id_map(step.tool)            # type: ignore
+                step.scatter.fields = [updater.get_new_id(x, id_map) for x in step.scatter.fields]
+            
             # fix steptaginput references
             for source in step.sources.values():
                 SelectorUpdater(workflow, self.id_map).trace(source)
@@ -185,6 +218,8 @@ class SymbolModifier(EntityModifier):
                 elif isinstance(step.tool, CommandToolBuilder):
                     tinp = [x for x in step.tool._inputs if x.uuid in possible_uuids][0]
                     new_id = tinp.tag
+                elif isinstance(step.tool, CodeTool):
+                    new_id = old_id
                 else:
                     raise RuntimeError
                 source.ftag = new_id

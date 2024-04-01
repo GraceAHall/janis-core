@@ -11,30 +11,19 @@ from janis_core.translations import translate
 
 def main() -> None:
     sysargs = sys.argv[1:]
-    args_namespace = parse_args(sysargs)
-    args_dict = interpret_args(args_namespace)
-    do_translate(args_dict)
+    args = parse_args(sysargs)
+    do_translate(args)
 
-def do_translate(args: dict[str, str]) -> None:
-    internal = ingest(args['infile'], args['from']) 
-    return translate(internal, dest_fmt=args['to'], mode=args['mode'], export_path=args['outdir'], as_workflow=args['as_workflow'])
-
-def interpret_args(args: argparse.Namespace) -> dict[str, str]:
-    out: dict[str, str] = {}
-    for key, val in args._get_kwargs():  # workaround for '--from' name: usually a python error.
-        if key == 'from':
-            out['from'] = val
-        elif key == 'to':
-            out['to'] = val
-        elif key == 'mode':
-            out['mode'] = val
-        elif key == 'infile':
-            out['infile'] = val
-        elif key == 'output_dir':
-            out['outdir'] = val
-        elif key == 'as_workflow':
-            out['as_workflow'] = val
-    return out
+def do_translate(args: argparse.Namespace) -> None:
+    internal = ingest(args.infile, args.__dict__['from']) # shitty workaround to access args.from
+    return translate(
+        internal, 
+        dest_fmt=args.to, 
+        nocmd=args.nocmd, 
+        simplification=args.simplification,
+        export_path=args.outdir, 
+        as_workflow=args.as_workflow
+    )
 
 def parse_args(sysargs: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description='Translate a janis workflow to CWL, WDL or Nextflow')
@@ -44,20 +33,22 @@ def parse_args(sysargs: list[str]) -> argparse.Namespace:
         help="Path to input file",
     )
     parser.add_argument(
-        "--from",
+        "-f", "--from",
         help="Language of infile. Will be autodetected if not supplied",
         choices=SupportedIngestion.all(),
-        type=str
+        type=str,
+        required=True
     )
     parser.add_argument(
-        "--to",
+        "-t", "--to",
         help="Language to translate to.",
         choices=SupportedTranslation.all(),
-        type=str
+        type=str,
+        required=True
     )
     parser.add_argument(
         "-o",
-        "--output-dir",
+        "--outdir",
         help="Output directory to write output to (default: translated).",
         type=str,
         default="translated"
@@ -68,15 +59,16 @@ def parse_args(sysargs: list[str]) -> argparse.Namespace:
         help="For tool translation: wraps output tool in workflow.",
     )
     parser.add_argument(
-        "--mode",
-        help="Translate mode (default: regular). Controls extent of tool translation\n\
-        - skeleton: ignores inputs which aren't used in workflow. no CLI command generation.\n\
-        - regular: ignores inputs which aren't used in workflow. \n\
-        - extended: full translation of all inputs & CLI command",
+        '--simplification',
+        help="Simplify the translated workflow by removing unused inputs and outputs.",
         type=str,
-        choices=["skeleton", "regular", "extended"],
-        default="extended"
+        choices=["off", "on", "aggressive"],
+        default="on",
     )
-
+    parser.add_argument(
+        "--nocmd",
+        help="Don't generate command section for translated tools",
+        action="store_true",
+    )
     return parser.parse_args(sysargs)
 

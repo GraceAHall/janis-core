@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from janis_core import settings
 from janis_core.settings.translate import ERenderCmd, ESimplification
-from janis_core.ingestion.common import fetch_container_for_packages
+from janis_core.ingestion.common import fetch_container_for_software_packages
 from janis_core.ingestion.galaxy.gxtool.command.cmdstr.analysis import CmdstrReferenceType
 from janis_core.ingestion.galaxy.gxtool.command.cmdstr.analysis import get_cmdstr_appearences
 from janis_core.ingestion.galaxy.gxtool.command import Command
@@ -59,7 +59,7 @@ class ToolFactory:
         tool = ITool(
             xmltool=self.xmltool,
             metadata=self.xmltool.metadata,
-            container=fetch_container_for_packages(packages),
+            container=fetch_container_for_software_packages(packages),
             base_command=self.get_base_command(),
             configfiles=self.xmltool.configfiles,
             scripts=self.xmltool.scripts,

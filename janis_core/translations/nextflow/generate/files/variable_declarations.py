@@ -8,7 +8,7 @@ from janis_core.translation_utils import DTypeType
 
 from ... import naming 
 from ... import task_inputs 
-from ...task_inputs import TaskInputType
+from janis_core.translations.nextflow.model import VariableType
 from ...task_inputs import TaskInput
 from ...model.files import NFVariableDefinition
 from ...model.files import NFVariableDefinitionBlock
@@ -30,7 +30,7 @@ def gen_variables_block(nf_workflow: NFWorkflow, wf: Workflow) -> Optional[NFVar
     if isinstance(nf_workflow, NFMainWorkflow):
         for tinput in wf.tool_inputs():
             if should_create_variable_definition(tinput, wf):
-                task_input = task_inputs.get(wf.id(), tinput)
+                task_input = task_inputs.get(wf.id(), tinput.id())
                 generator = VariableDefinitionGenerator(tinput, task_input)
                 var_def = generator.generate()
                 var_definitions.append(var_def)
@@ -43,12 +43,12 @@ def gen_variables_block(nf_workflow: NFWorkflow, wf: Workflow) -> Optional[NFVar
 
 def should_create_variable_definition(input_node: TInput, wf: Workflow) -> bool:
     # no real workflow input for this input node
-    if not task_inputs.exists(wf.id(), input_node):
+    if not task_inputs.exists(wf.id(), input_node.id()):
         return False
     
-    # only TASK_INPUT and PARAM TaskInputTypes can be channels
-    task_input = task_inputs.get(wf.id(), input_node)
-    if task_input.ti_type in (TaskInputType.STATIC, TaskInputType.IGNORED, TaskInputType.LOCAL):
+    # only INPUT and PARAM VariableTypes can be channels
+    task_input = task_inputs.get(wf.id(), input_node.id())
+    if task_input.vtype in (VariableType.STATIC, VariableType.IGNORED, VariableType.LOCAL):
         return False
     
     # check whether the datatype implies it will be a variable

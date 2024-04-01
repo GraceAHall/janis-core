@@ -1,12 +1,10 @@
 
 from collections import Counter
 
-from janis_core.workflow.workflow import Workflow, InputNode, CommandTool
+from janis_core.workflow.workflow import Workflow, InputNode
 from janis_core.types import File, Filename
 from janis_core import translation_utils as utils
-
-from janis_core.translations.common import trace
-
+from janis_core.introspection import trace
 
 
 def get_true_workflow_inputs(wf: Workflow) -> set[str]:
@@ -99,71 +97,4 @@ def get_scatter_wf_inputs(wf: Workflow) -> set[str]:
             if should_scatter and isinstance(node, InputNode):
                 out.add(node.id())
     return out
-
-
-
-
-
-def get_filename_wf_inputs_dep(wf: Workflow) -> set[str]:
-    """
-    Edge case!
-    ToolInputs which have Filename DataType may require channel.
-    
-    For a ToolInput which uses InputSelector:
-        - Assume it derives name using the InputSelector (another ToolInput)
-        - Therefore ToolInput is internal to the (future) process
-        - Don't create channel
-    
-    For a ToolInput which does not use InputSelector:
-        - String value does actually need to be supplied to ToolInput
-        - Therefore param or channel needed to feed value to (future) process input
-        - Create channel  (because Filenames move similarly to Files in nextflow workflow)
-
-    [eg InputSelector]
-
-    inside BwaMem_SamToolsView:
-        ToolInput(
-            "outputFilename",
-            Filename(prefix=InputSelector("sampleName"), extension=".bam"),
-            position=8,
-            shell_quote=False,
-            prefix="-o",
-            doc="output file name [stdout]",
-        ),
-
-    [eg no InputSelector]
-
-    step call:
-        BcfToolsNorm(
-            vcf=self.sortSomatic1.out,
-            reference=self.reference,
-            outputType="v",
-            outputFilename="normalised.vcf",
-        ),
-
-    inside BcfToolsNorm:
-        ToolInput(
-            "outputFilename",
-            Filename(extension=".vcf.gz"),
-            prefix="-o",
-            doc="--output: When output consists of a single stream, "
-            "write it to FILE rather than to standard output, where it is written by default.",
-        ),
-    """
-    out: set[str] = set()
-    for step in wf.step_nodes.values():
-        
-        # CommandTools
-        if isinstance(step.tool, CommandTool):
-            # get all tool inputs with Filename type
-            filename_inputs = [x for x in step.tool.inputs() if isinstance(x.input_type, Filename)]
-            # if fed value from wf input, mark wf input for channel creation
-            for inp in filename_inputs:
-                if inp.id() in step.sources:
-                    src = step.sources[inp.id()]
-                    node = utils.resolve_node(src)
-                    if isinstance(node, InputNode):
-                        out.add(node.id())
-    return out
-
 

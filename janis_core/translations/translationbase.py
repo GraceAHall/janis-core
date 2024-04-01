@@ -25,10 +25,10 @@ from janis_core.utils.logger import Logger
 from janis_core import settings
 
 from janis_core.messages import inject_messages
-from .common.todisk import write_tool_to_console
-from .common.todisk import write_tool_to_disk
-from .common.todisk import write_workflow_to_console
-from .common.todisk import write_workflow_to_disk
+from .todisk import write_tool_to_console
+from .todisk import write_tool_to_disk
+from .todisk import write_workflow_to_console
+from .todisk import write_workflow_to_disk
 
 class TranslationError(Exception):
     def __init__(self, message: str, inner: Exception):

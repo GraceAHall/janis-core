@@ -7,7 +7,7 @@ from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
 
 from ....variables import VariableManager
-from ....variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 
 from .attributes import get_attributes
 
@@ -17,7 +17,7 @@ from .attributes import get_attributes
 def prescript_inputs(tool: CommandTool, vmanager: VariableManager) -> list[ToolInput]:
     """
     a ToolInput is necessary when:
-    - its VariableType is in [VariableType.TASK_INPUT, VariableType.PARAM, VariableType.STATIC]
+    - its VariableType is in [VariableType.INPUT, VariableType.PARAM, VariableType.STATIC]
     - its VariableType is VariableType.IGNORED and its default value is not None
     - its VariableType is VariableType.IGNORED and it is a Filename type
     """
@@ -27,7 +27,7 @@ def prescript_inputs(tool: CommandTool, vmanager: VariableManager) -> list[ToolI
         attributes = get_attributes(inp)
         vtype = vmanager.get(inp.id()).original.vtype
         
-        if vtype in [VariableType.TASK_INPUT, VariableType.PARAM]:
+        if vtype in [VariableType.INPUT, VariableType.PARAM]:
             dtt = utils.get_dtt(inp.input_type)  # type: ignore
  
             # these types need special prescript processing
@@ -92,7 +92,7 @@ def script_reference_inputs(tool: CommandTool, vmanager: VariableManager) -> lis
 def is_script_reference_input(inp: ToolInput | ToolArgument, vmanager: VariableManager) -> bool:
     if isinstance(inp, ToolInput):
         vtype = vmanager.get(inp.id()).original.vtype
-        if vtype in [VariableType.TASK_INPUT, VariableType.PARAM]:
+        if vtype in [VariableType.INPUT, VariableType.PARAM]:
             return True
     return False
 

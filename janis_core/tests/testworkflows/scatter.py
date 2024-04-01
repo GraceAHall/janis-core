@@ -74,6 +74,55 @@ class BasicScatterTestWF(Workflow):
         return self.__class__.__name__
 
 
+# SimplificationScatterTestWF
+# Scatter for simplification to ensure scattered inputs are not removed
+class SimplificationScatterTestWF(Workflow):
+
+    def constructor(self):
+        self.input('inStrArray', Array(String()))
+        self.input('inIntOptArray', Array(Int(), optional=True))
+
+        # self.step(
+        #     "stp1", 
+        #     ScatterTestTool(inStrOpt=self.inStrArray),
+        #     scatter="inStrOpt"
+        # )
+        self.step(
+            "stp1", 
+            ScatterTestTool(inIntOpt=self.inIntOptArray),
+            scatter="inIntOpt"
+        )
+
+    def friendly_name(self):
+        return "TEST: SimplificationScatterTestWF"
+
+    def id(self) -> str:
+        return self.__class__.__name__
+
+
+class ScatterTestTool(CommandTool):
+    def tool(self) -> str:
+        return "ScatterTestTool"
+
+    def base_command(self) -> Optional[str | list[str]]:
+        return "echo"
+
+    def inputs(self) -> list[ToolInput]:
+        return [
+            ToolInput("inStrOpt", String(optional=True)),
+            ToolInput("inIntOpt", Int(optional=True))
+        ]
+
+    def outputs(self):
+        return []
+
+    def container(self) -> str:
+        return "ubuntu:latest"
+
+    def version(self) -> str:
+        return "TEST"
+
+
 # ChainedScatterTestWF
 # Scatter with subsequent consuming steps 
 

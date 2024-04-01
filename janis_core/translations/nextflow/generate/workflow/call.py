@@ -9,7 +9,7 @@ from janis_core.workflow.workflow import StepNode
 from janis_core.types import DataType, Stdout
 from janis_core import settings
 
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 from janis_core import translation_utils as utils
 from ... import params
 

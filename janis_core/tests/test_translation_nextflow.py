@@ -5,7 +5,7 @@ import regex as re
 from typing import Any, Optional
 
 from janis_core.modifications import to_builders
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 from janis_core.tests.testtools import (
     InputQualityTestTool,
     BasicTestTool,
@@ -216,14 +216,14 @@ def do_preprocessing_workflow(wf: Workflow, ignore_task_inputs: bool=False) -> W
     wf = to_builders(wf)
     wf = simplify(wf)
     if not ignore_task_inputs:
-        nextflow.preprocessing.populate_task_inputs(wf, wf)
+        nextflow.task_inputs.populate_task_inputs(wf, wf)
     assert(isinstance(wf, WorkflowBuilder))
     return wf
 
 def do_preprocessing_tool(tool: CommandTool | PythonTool) -> CommandToolBuilder | PythonTool:
     from janis_core.modifications import to_builders
     tool = to_builders(tool)
-    nextflow.preprocessing.populate_task_inputs(tool)
+    nextflow.task_inputs.populate_task_inputs(tool)
     assert(isinstance(tool, CommandToolBuilder | PythonTool))
     return tool
 
@@ -650,6 +650,7 @@ class TestTaskInputs(unittest.TestCase):
         print(process.get_string())
         expected_inputs = {
             'path in_file',
+            'val in_int1',
             'val in_int2',
             'val in_str1',
         }
@@ -1219,8 +1220,8 @@ class TestFiles(unittest.TestCase):
             "ch_in_int",
             ")",
             "emit:",
-            "outIntFile = ORANGES_SUBWORKFLOW.out.out",
-            "outStringFile = STRING_TOOL.out.out",
+            "out_int_file = ORANGES_SUBWORKFLOW.out.the_file",
+            "out_string_file = STRING_TOOL.out.out",
             "}",
         ]
         self.assertEqual(len(actual_lines), len(expected_lines))
@@ -4166,24 +4167,24 @@ class TestOrdering(unittest.TestCase):
         # from process outputs
         actual = _get_task_call_lines(self.mainstr, 'STP3')
         expected = [
-            "STP1.out.outFastqArray,",
-            "STP1.out.outFastq,",
-            "STP1.out.outFile,",
-            "STP1.out.outIntArray,",
-            "STP1.out.outInt,",
-            "STP1.out.outStr",
+            "STP1.out.out_fastq_array,",
+            "STP1.out.out_fastq,",
+            "STP1.out.out_file,",
+            "STP1.out.out_int_array,",
+            "STP1.out.out_int,",
+            "STP1.out.out_str",
         ]
         self.assertEqual(expected, actual)
 
         # from subworkflow outputs
         actual = _get_task_call_lines(self.mainstr, 'STP5')
         expected = [
-            "STP2.out.outFastqArray,",
-            "STP2.out.outFastq,",
-            "STP2.out.outFile,",
-            "STP2.out.outIntArray,",
-            "STP2.out.outInt,",
-            "STP2.out.outStr",
+            "STP2.out.out_fastq_array,",
+            "STP2.out.out_fastq,",
+            "STP2.out.out_file,",
+            "STP2.out.out_int_array,",
+            "STP2.out.out_int,",
+            "STP2.out.out_str",
         ]
         self.assertEqual(expected, actual)
 
@@ -4233,24 +4234,24 @@ class TestOrdering(unittest.TestCase):
         # from process outputs
         actual = _get_task_call_lines(self.mainstr, 'STP4')
         expected = [
-            "STP1.out.outFastq,",
-            "STP1.out.outFile,",
-            "STP1.out.outFastqArray,",
-            "STP1.out.outInt,",
-            "STP1.out.outIntArray,",
-            "STP1.out.outStr",
+            "STP1.out.out_fastq,",
+            "STP1.out.out_file,",
+            "STP1.out.out_fastq_array,",
+            "STP1.out.out_int,",
+            "STP1.out.out_int_array,",
+            "STP1.out.out_str",
         ]
         self.assertEqual(expected, actual)
 
         # from subworkflow outputs
         actual = _get_task_call_lines(self.mainstr, 'STP6')
         expected = [
-            "STP2.out.outFastq,",
-            "STP2.out.outFile,",
-            "STP2.out.outFastqArray,",
-            "STP2.out.outInt,",
-            "STP2.out.outIntArray,",
-            "STP2.out.outStr",
+            "STP2.out.out_fastq,",
+            "STP2.out.out_file,",
+            "STP2.out.out_fastq_array,",
+            "STP2.out.out_int,",
+            "STP2.out.out_int_array,",
+            "STP2.out.out_str",
         ]
         self.assertEqual(expected, actual)
     

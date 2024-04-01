@@ -7,16 +7,58 @@ WDL unwrap
 - inconsistent brackets
   File? out_txt = if defined(testtool) then (testtool + ".txt") else None 
 
+###############################
+### NEXTFLOW TRANSLATE BUGS ###
+###############################
+
+
+Plumbling 
+- is this workflow singles or arrays input? 
+- plumbing will be different depending. 
+1. work out which are the true input files, and which are supporting
+    - singles
+        - work out which are the first tasks (multiple execution branches)
+        - which file inputs are fed to first tasks?     (main)
+        - which are fed to random tasks in the middle?  (supporting)
+    - arrays 
+        - array inputs are the true inputs. 
+        - 
+
+naming 
+- add_island_names_tool -> dont add "_tool" to names. 
+
+Variable declarations
+- super_enhancer bambai_pair incorrect plumbing - should be filepairs 
+
+Process inputs 
+- File types can never be val types.
+- filepairs should be tuple path(bam), path(bai).  
+
+
+Channel operators 
+- (CWL) input_file: [assign_genes/result_file, sort_bed/sorted_file]
+  Note: has two sources. 
+  -> 
+
+  
+
+#######################
+### CWL INGEST BUGS ###
+#######################
+
+task order 
+- currently just alphabetical? need to reorganise so it makes sense for non-dynamic workflow language translations (NXF). 
+
+
 ############
 ### TODO ###
 ############
 
 TODO
-- simplification:   testing (add tests fromgalaxy tools)
-- modes:            testing
-- containers:       implement + testing
-- pass test suite.
+- link settings.general.SCRIPT_FILES to output translation units
 - bugfixes for release_janis.
+- filename types
+- address nextflow/preprocessing/task_inputs.py?
 - release.
 
 - WDL: optional outputs, secondaries, plumbing, basic test suite
@@ -31,7 +73,7 @@ CONTAINERS
 - ensure containers using docker.io?
 - keep registry locally?
 
-SIMPLIFICATION 
+SIMPLIFICATION
 - change CLI
 - add aggressive mode
 

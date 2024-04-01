@@ -15,7 +15,7 @@ from .script import gen_nf_process_script
 from .outputs import gen_nf_process_outputs
 
 from ...variables import init_variable_manager_for_task
-from ...variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 
 
 def generate_processes(wf: WorkflowBuilder) -> dict[str, NFProcess]:
@@ -127,7 +127,7 @@ class PythonToolProcessGenerator:
 
             # get final arg for this tinput 
             cvar = self.vmanager.get(tag).current
-            if cvar.vtype in [VariableType.TASK_INPUT, VariableType.PARAM]:
+            if cvar.vtype in [VariableType.INPUT, VariableType.PARAM]:
                 
                 # get varname
                 # workaround for secondaries

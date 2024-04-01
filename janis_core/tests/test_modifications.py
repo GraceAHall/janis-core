@@ -26,6 +26,7 @@ from janis_core.translations import NextflowTranslator
 from janis_core.translations import CwlTranslator
 
 from janis_core.modifications import to_builders
+from janis_core.modifications import order_steps_topologically
 from janis_core.modifications import ensure_containers
 from janis_core.modifications import simplify
 from janis_core.modifications import refactor_symbols
@@ -34,12 +35,14 @@ from janis_core.modifications import wrap_tool_in_workflow
 from janis_core.tests.testtools import FileOutputPythonTestTool
 from janis_core.tests.testtools import GridssTestTool
 from janis_core.tests.testtools import FastqcTestTool
+from janis_core.tests.testtools import OperatorResourcesTestTool
 from janis_core.tests.testworkflows import PruneFlatTW
 from janis_core.tests.testworkflows import PruneNestedTW
 from janis_core.tests.testworkflows import AssemblyTestWF
 from janis_core.tests.testworkflows import IllegalSymbolsTestWF
 from janis_core.tests.testworkflows import UnwrapTestWF
 from janis_core.tests.testworkflows import SubworkflowTestWF
+from janis_core.tests.testworkflows import SimplificationScatterTestWF
 
 
 CWL_TESTDATA_PATH = os.path.join(os.getcwd(), 'janis_core/tests/data/cwl')
@@ -73,6 +76,7 @@ def _reset_global_settings() -> None:
     settings.validation.VALIDATE_STRINGFORMATTERS = False
     settings.translate.ALLOW_EMPTY_CONTAINER = True
     settings.translate.nextflow.ENTITY = 'workflow'
+    settings.translate.AS_WORKFLOW = False
 
 def _run(filepath: str, srcfmt: str, destfmt: str, mode: Optional[str]=None, simplification: Optional[str]=None) -> Any:
     internal = ingest(filepath, srcfmt)
@@ -267,6 +271,30 @@ class TestBuilders(unittest.TestCase):
             self.assertIsInstance(step.tool, CommandToolBuilder)
 
 
+class TestStepOrdering(unittest.TestCase):
+
+    def setUp(self) -> None:
+        _reset_global_settings()
+
+    def test_wf_super_enhancer(self):
+        infile = f'{CWL_TESTDATA_PATH}/workflows/super_enhancer_wf.cwl'
+        wf = ingest(infile, 'cwl')
+        wf = to_builders(wf)
+        assert isinstance(wf, WorkflowBuilder)
+        wf = order_steps_topologically(wf)
+        expected_order = [
+            'make_gff',
+            'run_rose',
+            'rename_png',
+            'sort_bed',
+            'reduce_bed',
+            'bed_to_bigbed',
+            'bed_to_macs',
+            'assign_genes',
+            'add_island_names',
+        ]
+        actual_order = [step.id() for step in wf.step_nodes.values()]
+        self.assertListEqual(expected_order, actual_order)
 
 
 class TestValidContainers(unittest.TestCase):
@@ -274,7 +302,7 @@ class TestValidContainers(unittest.TestCase):
     def setUp(self) -> None:
         _reset_global_settings()
 
-    def test_echo_single(self):
+    def test_echo(self):
         """Test tools calling linux binaries"""
         cmdtool = CommandToolBuilder(
             tool="test",
@@ -295,7 +323,7 @@ class TestValidContainers(unittest.TestCase):
         """Test tools calling linux binaries"""
         cmdtool = CommandToolBuilder(
             tool="test",
-            base_command=["echo", "hello"],
+            base_command=["echo", '"hello"'],
             inputs=[],
             outputs=[],
             container=None, # type: ignore
@@ -307,7 +335,7 @@ class TestValidContainers(unittest.TestCase):
         msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
         msgs = [x.message for x in msgs]
         self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
-    
+     
     def test_fastqc(self):
         """Test tools calling bioinformatics software"""
         cmdtool = CommandToolBuilder(
@@ -320,11 +348,28 @@ class TestValidContainers(unittest.TestCase):
         )
         cmdtool = ensure_containers(cmdtool)
         assert isinstance(cmdtool, CommandToolBuilder)
-        self.assertEqual(cmdtool._container, 'quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0')
+        self.assertIn('quay.io/biocontainers/fastqc:', cmdtool._container)
         msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
         msgs = [x.message for x in msgs]
         self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
     
+    def test_samtools_sort(self):
+        """Test tools calling linux binaries"""
+        cmdtool = CommandToolBuilder(
+            tool="test",
+            base_command=["samtools", "sort"],
+            inputs=[],
+            outputs=[],
+            container=None, # type: ignore
+            version="1.0"
+        )
+        cmdtool = ensure_containers(cmdtool)
+        assert isinstance(cmdtool, CommandToolBuilder)
+        self.assertIn('quay.io/biocontainers/samtools:', cmdtool._container)
+        msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
+        msgs = [x.message for x in msgs]
+        self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
+   
     def test_bwa_mem(self):
         """Test tools calling bioinformatics software (multi)"""
         cmdtool = CommandToolBuilder(
@@ -337,7 +382,42 @@ class TestValidContainers(unittest.TestCase):
         )
         cmdtool = ensure_containers(cmdtool)
         assert isinstance(cmdtool, CommandToolBuilder)
-        self.assertEqual(cmdtool._container, "quay.io/biocontainers/bwa-mem2:2.2.1--hd03093a_5")
+        self.assertIn("quay.io/biocontainers/bwa:", cmdtool._container)
+        msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
+        msgs = [x.message for x in msgs]
+        self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
+    
+    def test_bwamem2(self):
+        """Test tools calling bioinformatics software (multi)"""
+        cmdtool = CommandToolBuilder(
+            tool="test",
+            base_command=["./bwa-mem2"],
+            inputs=[],
+            outputs=[],
+            container=None,  # type: ignore
+            version="1.0"
+        )
+        cmdtool = ensure_containers(cmdtool)
+        assert isinstance(cmdtool, CommandToolBuilder)
+        self.assertIn("quay.io/biocontainers/bwa-mem2:", cmdtool._container)
+    
+    def test_ebi_fraggenescan(self):
+        """Test tools calling bioinformatics software (multi)"""
+        filepath = f'{CWL_TESTDATA_PATH}/workflows/ebi-metagenomics/tools/Combined_gene_caller/FGS.cwl'
+        cmdtool = ingest(filepath, 'cwl')
+        cmdtool = ensure_containers(cmdtool)
+        assert isinstance(cmdtool, CommandToolBuilder)
+        self.assertIn("quay.io/biocontainers/fraggenescan:", cmdtool._container)
+        msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
+        msgs = [x.message for x in msgs]
+        self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
+    
+    def test_ebi_interproscan(self):
+        filepath = f'{CWL_TESTDATA_PATH}/workflows/ebi-metagenomics/tools/InterProScan/InterProScan-v5-none_docker.cwl'
+        cmdtool = ingest(filepath, 'cwl')
+        cmdtool = ensure_containers(cmdtool)
+        assert isinstance(cmdtool, CommandToolBuilder)
+        self.assertIn("quay.io/biocontainers/interproscan:", cmdtool._container)
         msgs = load_loglines(entity_uuids=set([cmdtool.uuid]))
         msgs = [x.message for x in msgs]
         self.assertIn('tool did not specify container or software requirement, guessed from command.', msgs)
@@ -351,11 +431,16 @@ class TestWrapTool(unittest.TestCase):
         _reset_global_settings()
 
     def test_tool_fastqc(self):
-        tool: CommandToolBuilder = FastqcTestTool()
+        settings.translate.AS_WORKFLOW = True
+        tool = FastqcTestTool()
+        
+        tool = to_builders(tool)
+        assert isinstance(tool, CommandToolBuilder)
+
         wf = wrap_tool_in_workflow(tool)
+        assert isinstance(wf, WorkflowBuilder)
 
         # basics
-        assert isinstance(wf, WorkflowBuilder)
         self.assertEqual(len(wf.input_nodes), 11)
         self.assertEqual(len(wf.step_nodes), 1)
         self.assertEqual(len(wf.output_nodes), 2)
@@ -379,42 +464,42 @@ class TestWrapTool(unittest.TestCase):
 
 
 
-class TestModes(unittest.TestCase):
+class TestRenderCmd(unittest.TestCase):
 
     def setUp(self) -> None:
         _reset_global_settings()
         self.flat_wf: WorkflowBuilder = PruneFlatTW()
     
     def test_render_cwl(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', mode='full')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', nocmd=False)
         toolstr = subtools[0][1]
         self.assertIn('inputBinding', toolstr)
     
     def test_render_nxf(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', mode='full')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', nocmd=False)
         toolstr = subtools[0][1]
         script_lines = _get_nf_process_script_lines(toolstr)
         self.assertGreater(len(script_lines), 1)
     
     def test_render_wdl(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', mode='full')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', nocmd=False)
         toolstr = subtools[0][1]
         script_lines = _get_wdl_command_lines(toolstr)
         self.assertGreater(len(script_lines), 2)
     
     def test_norender_cwl(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', mode='skeleton')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'cwl', nocmd=True)
         toolstr = subtools[0][1]
         self.assertNotIn('inputBinding', toolstr)
     
     def test_norender_nxf(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', mode='skeleton')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'nextflow', nocmd=True)
         toolstr = subtools[0][1]
         script_lines = _get_nf_process_script_lines(toolstr)
         self.assertEqual(len(script_lines), 1)
     
     def test_norender_wdl(self) -> None:
-        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', mode='skeleton')
+        mainstr, _, _, subtools = translate(self.flat_wf, 'wdl', nocmd=True)
         toolstr = subtools[0][1]
         script_lines = _get_wdl_command_lines(toolstr)
         self.assertEqual(len(script_lines), 2)
@@ -431,9 +516,9 @@ class TestSimplification(unittest.TestCase):
         self.nested_wf: WorkflowBuilder = PruneNestedTW()               # type: ignore
         self.nested_wf: WorkflowBuilder = to_builders(self.nested_wf)   # type: ignore
 
-    ### workflow inputs ###
+    ### BASICS ###
     
-    def test_flat_wf_inputs(self) -> None:
+    def test_wf_inputs(self) -> None:
         settings.translate.SIMPLIFICATION = ESimplification.ON
         wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
         actual_inputs = set(list(wf.input_nodes.keys()))
@@ -455,8 +540,126 @@ class TestSimplification(unittest.TestCase):
         ])
         self.assertSetEqual(actual_inputs, expected_inputs)
     
+    def test_dynamic_tinputs(self) -> None:
+        """
+        checks whether tool inputs with dynamic sources: 
+        - are kept in the simplified workflow 
+        - have sources preserved in stp.sources
+        """
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
+
+        tool = wf.step_nodes['stp4'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        
+        # checking optional inputs with dynamic sources are kept
+        num_actual_inputs = len(tool._inputs)
+        num_expected_inputs = 4
+        self.assertEqual(num_actual_inputs, num_expected_inputs)
+        
+        # checking sources are kept
+        step = wf.step_nodes['stp4']
+        actual_sources = set(list(step.sources.keys()))
+        expected_sources = set(['inFileOpt1', 'inStrOpt1'])
+        self.assertEqual(actual_sources, expected_sources)
+        
+        # checking sources are kept
+        step = wf.step_nodes['stp5']
+        actual_sources = set(list(step.sources.keys()))
+        expected_sources = set(['inFileOpt2', 'inStrOpt2'])
+        self.assertEqual(actual_sources, expected_sources)
+
+    def test_static_tinputs(self) -> None:
+        """
+        checks whether static values are 
+        - moved to input defaults
+        - corresponding inputs are removed from stp.sources 
+        """
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
+
+        # checking unused tool inputs are removed
+        tool = wf.step_nodes['stp6'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        num_actual_inputs = len(tool._inputs)
+        num_expected_inputs = 3
+        self.assertEqual(num_actual_inputs, num_expected_inputs)
+        
+        # checking static values moved to tool input defaults
+        for tinput in tool._inputs:
+            if tinput.id() == 'inStrOpt1':
+                self.assertEqual(tinput.default, 'hello')
+            elif tinput.id() == 'inStrOpt2':
+                self.assertEqual(tinput.default, 'there')
+            elif tinput.id() == 'inStr3':
+                self.assertEqual(tinput.default, 'friend')
+            else:
+                self.assertEqual(tinput.default, None)
+        
+        # checking static values removed from stp.sources
+        step = wf.step_nodes['stp6']
+        self.assertEqual(len(step.sources), 0)
+        
+    def test_internal_reference_tinputs(self) -> None:
+        """
+        checks whether unnecessary tool inputs (which would usually be removed)
+        are not removed if 
+        - they refer to necessary tool inputs, or
+        - an output refers to them
+        """
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
+
+        # tool input -> tool input
+        tool = wf.step_nodes['stp2'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        actual_tinputs = set([x.id() for x in tool._inputs])
+        expected_tinputs = set(['inFile1', 'OutputName'])
+        self.assertEqual(actual_tinputs, expected_tinputs)
+    
+        # tool output -> tool input
+        tool = wf.step_nodes['stp3'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        actual_tinputs = set([x.id() for x in tool._inputs])
+        expected_tinputs = set(['inFileOpt1', 'inStrOpt1'])
+        self.assertEqual(actual_tinputs, expected_tinputs)
+    
+    def test_scattered_tinputs(self) -> None:
+        """tinputs which are scattered on should not be removed"""
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf = SimplificationScatterTestWF()              # type: ignore
+        wf = to_builders(wf)                            # type: ignore
+        wf: WorkflowBuilder = simplify(wf)              # type: ignore
+
+        # tool input -> tool input
+        tool = wf.step_nodes['stp1'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        actual_tinputs = set([x.id() for x in tool._inputs])
+        expected_tinputs = set(['inIntOpt'])
+        self.assertEqual(actual_tinputs, expected_tinputs)
+    
+    def test_toutputs(self) -> None:
+        """
+        checks whether unnecessary tool outputs are removed. Tool outputs are kept when:
+        - they are referenced in step input sources (connection)
+        - they are referenced in workflow output sources (workflow output)
+        """
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.flat_wf)        # type: ignore
+
+        # tool input -> tool input
+        tool = wf.step_nodes['stp0'].tool
+        assert isinstance(tool, CommandToolBuilder)
+        actual_toutputs = set([x.id() for x in tool._outputs])
+        expected_toutputs = set(['outFile', 'outFileOpt1', 'outStr', 'outStrOpt1'])
+        self.assertEqual(actual_toutputs, expected_toutputs)
+
+    ### NESTED ###
+        
     def test_nested_wf_inputs(self) -> None:
-        actual_inputs = set(list(self.nested_wf.input_nodes.keys()))
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.nested_wf)        # type: ignore
+        actual_inputs = set(list(wf.input_nodes.keys()))
         expected_inputs = set([
             'inFile1',
             'inFile2',
@@ -475,118 +678,12 @@ class TestSimplification(unittest.TestCase):
             'inStrOpt3',
         ])
         self.assertSetEqual(actual_inputs, expected_inputs)
-        
-    ### migrating statics ###
-
-    def test_migrate_single_statics(self) -> None:
-        tool = self.flat_wf.step_nodes['stp4'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        
-        # checking num inputs
-        num_actual_inputs = len(tool._inputs)
-        num_expected_inputs = 4
-        self.assertEqual(num_actual_inputs, num_expected_inputs)
-        
-        tool = self.flat_wf.step_nodes['stp6'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        
-        # checking num inputs
-        num_actual_inputs = len(tool._inputs)
-        num_expected_inputs = 3
-        self.assertEqual(num_actual_inputs, num_expected_inputs)
-        
-        # checking default values
-        for tinput in tool._inputs:
-            if tinput.id() == 'inStrOpt1':
-                self.assertEqual(tinput.default, 'hello')
-            elif tinput.id() == 'inStrOpt2':
-                self.assertEqual(tinput.default, 'there')
-            elif tinput.id() == 'inStrOpt3':
-                self.assertEqual(tinput.default, 'friend')
-            else:
-                self.assertEqual(tinput.default, None)
-        
-    def test_remove_sources(self) -> None:
-        step = self.flat_wf.step_nodes['stp4']
-        actual_sources = set(list(step.sources.keys()))
-        expected_sources = set(['inFileOpt1', 'inStrOpt1'])
-        self.assertEqual(actual_sources, expected_sources)
-        
-        step = self.flat_wf.step_nodes['stp5']
-        actual_sources = set(list(step.sources.keys()))
-        expected_sources = set(['inFileOpt2', 'inStrOpt2'])
-        self.assertEqual(actual_sources, expected_sources)
-        
-        step = self.flat_wf.step_nodes['stp6']
-        actual_sources = set(list(step.sources.keys()))
-        expected_sources = set()
-        self.assertEqual(actual_sources, expected_sources)
-
-    ### tool inputs: flat wf ###
-
-    def test_mandatory_tinputs(self) -> None:
-        tool = self.flat_wf.step_nodes['stp1'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set([
-            'inFile1', 'inFile2', 'inStr1', 'inStr2'
-        ])
-        self.assertEqual(actual_tinputs, expected_tinputs)
-
-    def test_connection_sources(self) -> None:
-        tool = self.flat_wf.step_nodes['stp4'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set(['inFileOpt1', 'inStrOpt1'])
-        for tinput_id in expected_tinputs:
-            self.assertIn(tinput_id, actual_tinputs)
-    
-    def test_inputnode_sources(self) -> None:
-        tool = self.flat_wf.step_nodes['stp5'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set(['inFileOpt2', 'inStrOpt2'])
-        for tinput_id in expected_tinputs:
-            self.assertIn(tinput_id, actual_tinputs)
-    
-    def test_static_sources(self) -> None:
-        tool = self.flat_wf.step_nodes['stp6'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set(['inStrOpt3'])
-        for tinput_id in expected_tinputs:
-            self.assertIn(tinput_id, actual_tinputs)
-    
-    def test_optional_tinputs(self) -> None:
-        tool = self.flat_wf.step_nodes['stp4'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set([
-            'inFileOpt1', 
-            'inFileOpt2', 
-            'inStrOpt1', 
-            'inStrOpt2', 
-        ])
-        self.assertEqual(actual_tinputs, expected_tinputs)
-    
-    def test_inputref_tinputs(self) -> None:
-        tool = self.flat_wf.step_nodes['stp2'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set(['inFile1', 'OutputName'])
-        self.assertEqual(actual_tinputs, expected_tinputs)
-    
-    def test_outputref_tinputs(self) -> None:
-        tool = self.flat_wf.step_nodes['stp3'].tool
-        assert isinstance(tool, CommandToolBuilder)
-        actual_tinputs = set([x.id() for x in tool._inputs])
-        expected_tinputs = set(['inFileOpt1', 'inStrOpt1'])
-        self.assertEqual(actual_tinputs, expected_tinputs)
-    
-    ### tool inputs: nested wf ###
     
     def test_nested_tool(self) -> None:
-        tool = self.nested_wf.step_nodes['stp1'].tool
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.nested_wf)        # type: ignore
+
+        tool = wf.step_nodes['stp1'].tool
         assert isinstance(tool, CommandToolBuilder)
         actual_tinputs = set([x.id() for x in tool._inputs])
         expected_tinputs = set([
@@ -599,8 +696,11 @@ class TestSimplification(unittest.TestCase):
         ])
         self.assertEqual(actual_tinputs, expected_tinputs)
     
-    def test_nested_wf1(self) -> None:
-        tool = self.nested_wf.step_nodes['stp2'].tool
+    def test_nested_wf(self) -> None:
+        settings.translate.SIMPLIFICATION = ESimplification.ON
+        wf: WorkflowBuilder = simplify(self.nested_wf)        # type: ignore
+
+        tool = wf.step_nodes['stp2'].tool
         assert isinstance(tool, WorkflowBuilder)
         actual_tinputs = set([x for x in tool.input_nodes.keys()])
         expected_tinputs = set([
@@ -611,8 +711,7 @@ class TestSimplification(unittest.TestCase):
         ])
         self.assertEqual(actual_tinputs, expected_tinputs)
 
-    def test_nested_wf2(self) -> None:
-        tool = self.nested_wf.step_nodes['stp2'].tool.step_nodes['stp2'].tool
+        tool = wf.step_nodes['stp2'].tool.step_nodes['stp2'].tool
         assert isinstance(tool, WorkflowBuilder)
         actual_tinputs = set([x for x in tool.input_nodes.keys()])
         expected_tinputs = set([
@@ -622,67 +721,14 @@ class TestSimplification(unittest.TestCase):
         self.assertEqual(actual_tinputs, expected_tinputs)
 
     ### integration tests ###
-
-    def test_aggr_workflows(self) -> None:
-        raise NotImplementedError
-        maintask, _, subworkflows, subtools = translate(self.nested_wf, dest_fmt='cwl', simplification='aggressive')
-        # main
-        expected_io = (10, 2)
-        actual_inputs = _get_cwl_inputs(maintask)
-        actual_outputs = _get_cwl_outputs(maintask)
-        self.assertEqual(len(actual_inputs), expected_io[0])
-        self.assertEqual(len(actual_outputs), expected_io[1])
-        # sub
-
-    def test_aggr_tools(self) -> None:
-        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='aggressive')
-        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='aggressive')
-        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='aggressive')
-        expected_tool_io = [
-            (4, 2), # PruneMandatoryTT
-            (1, 1), # PruneInputRefTT
-            (0, 2), # PruneOutputRefTT
-            (1, 3), # PruneOptionalTT
-            (0, 3), # PruneOptional2TT
-        ]
-        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
-            # cwl
-            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
-            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
-            # nxf
-            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
-            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
-            # wdl
-            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
-            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
-
-    def test_on_tools(self) -> None:
-        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='on')
-        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='on')
-        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='on')
-        expected_tool_io = [
-            (4, 2), # PruneMandatoryTT
-            (2, 1), # PruneInputRefTT
-            (2, 2), # PruneOutputRefTT
-            (4, 3), # PruneOptionalTT
-            (3, 3), # PruneOptional2TT
-        ]
-        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
-            # cwl
-            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
-            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
-            # nxf
-            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
-            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
-            # wdl
-            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
-            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
-
-    def test_off_tools(self) -> None:
+        
+    def test_simplification_off_tool(self) -> None:
         _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='off')
         _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='off')
         _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='off')
         expected_tool_io = [
+            # (num_inputs, num_outputs)  
+            (2, 6), # PruneOutputTT
             (4, 2), # PruneMandatoryTT
             (2, 1), # PruneInputRefTT
             (2, 2), # PruneOutputRefTT
@@ -699,7 +745,56 @@ class TestSimplification(unittest.TestCase):
             # wdl
             self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
             self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
+    
+    def test_simplification_on_tool(self) -> None:
+        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='on')
+        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='on')
+        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='on')
+        expected_tool_io = [
+            (2, 4), # PruneOutputTT
+            (4, 2), # PruneMandatoryTT
+            (2, 1), # PruneInputRefTT
+            (2, 2), # PruneOutputRefTT
+            (4, 3), # PruneOptionalTT
+            (3, 3), # PruneOptional2TT
+        ]
+        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
+            # cwl
+            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
+            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
+            # nxf
+            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
+            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
+            # wdl
+            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
+            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
+    
+    def test_simplification_aggr_tool(self) -> None:
+        _, _, _, cwltools = translate(PruneFlatTW(), dest_fmt='cwl', simplification='aggressive')
+        _, _, _, nxftools = translate(PruneFlatTW(), dest_fmt='nextflow', simplification='aggressive')
+        _, _, _, wdltools = translate(PruneFlatTW(), dest_fmt='wdl', simplification='aggressive')
+        expected_tool_io = [
+            (2, 4), # PruneOutputTT
+            (4, 2), # PruneMandatoryTT
+            (1, 1), # PruneInputRefTT
+            (0, 2), # PruneOutputRefTT
+            (1, 3), # PruneOptionalTT
+            (1, 3), # PruneOptional2TT
+        ]
+        for expected_io, cwltool, nxftool, wdltool in zip(expected_tool_io, cwltools, nxftools, wdltools):
+            # cwl
+            self.assertEqual(len(_get_cwl_inputs(cwltool[1])), expected_io[0])
+            self.assertEqual(len(_get_cwl_outputs(cwltool[1])), expected_io[1])
+            # nxf
+            self.assertEqual(len(_get_nf_process_input_lines(nxftool[1])), expected_io[0])
+            self.assertEqual(len(_get_nf_process_output_lines(nxftool[1])), expected_io[1])
+            # wdl
+            self.assertEqual(len(_get_wdl_input_lines(wdltool[1])), expected_io[0])
+            self.assertEqual(len(_get_wdl_output_lines(wdltool[1])), expected_io[1])
 
+
+
+    
 
 
 
@@ -709,6 +804,16 @@ class TestCaseFormatting(unittest.TestCase):
         _reset_global_settings()
         wf = AssemblyTestWF()
         self.wf = to_builders(wf)
+
+    def test_resources(self):
+        """
+        checks that InputSelectors in tool.cpu/memory/disk/time 
+        are updated to match the new input name formatting (will throw error if not)
+        """
+        tool = OperatorResourcesTestTool()
+        from janis_core import settings
+        settings.translate.WITH_RESOURCE_OVERRIDES = True
+        toolstr = translate(tool, 'cwl')
 
     def test_cwl_entities(self) -> None:
         settings.translate.DEST = 'cwl'
@@ -911,7 +1016,7 @@ class TestIllegalSymbolRefactor(unittest.TestCase):
         self.assertSetEqual(expected, actual)
 
         # workflow outputs
-        expected = set(['the_file'])
+        expected = set(['out_the_file'])
         actual = set([x.id() for x in wf.output_nodes.values()])
         self.assertSetEqual(expected, actual)
         
@@ -922,8 +1027,8 @@ class TestIllegalSymbolRefactor(unittest.TestCase):
             'in_filename',
             'inp',
             'input',
-            'out',
-            'output',
+            'in_out',
+            'in_output',
         ])
         actual = set([x.id() for x in tool._inputs])
         self.assertSetEqual(expected, actual)
@@ -978,7 +1083,7 @@ class TestIllegalSymbolRefactor(unittest.TestCase):
         
         # workflow inputs
         expected = set([
-            'theFile','theFileOpt','theFileArr','theFilenamePath','theBam',
+            'inTheFile','theFileOpt','theFileArr','theFilenamePath','theBam',
             'theBamBai','theBamBaiArr','theStr','theStrOpt','theInt',
             'theIntOpt','theFloat','theFloatOpt','theBool',
         ])
@@ -986,7 +1091,7 @@ class TestIllegalSymbolRefactor(unittest.TestCase):
         self.assertSetEqual(expected, actual)
 
         # workflow outputs
-        expected = set(['outTheFile'])
+        expected = set(['theFile'])
         actual = set([x.id() for x in wf.output_nodes.values()])
         self.assertSetEqual(expected, actual)
         

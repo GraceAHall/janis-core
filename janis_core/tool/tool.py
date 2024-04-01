@@ -195,7 +195,8 @@ class Tool(ABC, object):
     def translate(
         self,
         dest_fmt: str,
-        mode: Optional[str] = None,
+        nocmd: Optional[bool] = None,
+        simplification: Optional[str] = None,
 
         # file io
         to_disk: Optional[bool] = None,
@@ -229,7 +230,8 @@ class Tool(ABC, object):
         return translate(
             entity=self,
             dest_fmt=dest_fmt,
-            mode=mode,
+            nocmd=nocmd,
+            simplification=simplification,
 
             # file io
             to_disk=to_disk,

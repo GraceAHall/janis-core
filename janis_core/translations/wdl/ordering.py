@@ -5,7 +5,6 @@ from typing import Any
 from abc import ABC, abstractmethod
 from janis_core import ToolInput, TInput
 from janis_core.workflow.workflow import InputNode
-from janis_core.types import File, String, Int, Float, Boolean, Array, Directory
 
 
 ### COMMAND TOOL INPUTS ###

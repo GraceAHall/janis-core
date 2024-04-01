@@ -7,7 +7,6 @@ from janis_core import settings
 
 from ...casefmt import to_case
 from ...params import Param
-from ...scope import Scope
 
 
 @dataclass

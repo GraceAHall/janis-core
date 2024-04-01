@@ -6,37 +6,40 @@ from typing import Tuple
 from janis_core import WorkflowBuilder, CommandToolBuilder, ToolInput, ToolArgument
 from janis_core.workflow.workflow import StepNode
 from janis_core.operators.selectors import InputSelector
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
 from janis_core import settings
 from janis_core.settings.translate import ESimplification
-from .history import TaskIOCollector
+from janis_core.introspection.task_inputs import TaskIOCollector
 
-def prune_tools_and_sources(main_wf: WorkflowBuilder, tools: dict[str, CommandToolBuilder]) -> None:
+
+def simplify_tools_and_sources(main_wf: WorkflowBuilder, tools: dict[str, CommandToolBuilder]) -> None:
     for tool in tools.values():
-        prune(main_wf, tool)
+        _do_simplify(main_wf, tool)
 
-def prune(main_wf: WorkflowBuilder, tool: CommandToolBuilder) -> None:
+def _do_simplify(main_wf: WorkflowBuilder, tool: CommandToolBuilder) -> None:
     """
     1. identify set of valid inputs / outputs
-    2. prune invalid tool inputs, arguments, outputs, and step sources
+    2. simplify invalid tool inputs, arguments, outputs, and step sources
     """
 
+    collector = TaskIOCollector(tool)
+    collector.collect(main_wf)
+    
     if settings.translate.SIMPLIFICATION == ESimplification.ON:
-        collector = TaskIOCollector(tool)
-        collector.collect(main_wf)
         valid_inp_ids = _get_valid_inputs_normal(main_wf, tool, collector)
         valid_out_ids = _get_valid_outputs_normal(main_wf, tool, collector)
     
     elif settings.translate.SIMPLIFICATION == ESimplification.AGGRESSIVE:
-        valid_inp_ids = _get_valid_inputs_aggr(tool)
-        valid_out_ids = _get_valid_outputs_aggr(tool)
+        valid_inp_ids = _get_valid_inputs_aggr(main_wf, tool, collector)
+        valid_out_ids = _get_valid_outputs_normal(main_wf, tool, collector)
+        # valid_out_ids = _get_valid_outputs_aggr(tool)
 
-    # prune tool inputs, arguments, outputs, and step sources feeding tool inputs
-    _prune_tool(main_wf, tool.id(), valid_inp_ids, valid_out_ids)
+    # simplify tool inputs, arguments, outputs, and step sources feeding tool inputs
+    _do_simplify_tool(main_wf, tool.id(), valid_inp_ids, valid_out_ids)
 
-def _get_valid_inputs_aggr(tool: CommandToolBuilder) -> set[str]:
+def _get_valid_inputs_aggr(tmain_wf: WorkflowBuilder, tool: CommandToolBuilder, collector: TaskIOCollector) -> set[str]:
     return set([x.id() for x in tool._inputs if not x.input_type.optional or x.default is not None])
 
 def _get_valid_outputs_aggr(tool: CommandToolBuilder) -> set[str]:
@@ -58,7 +61,7 @@ def _get_valid_inputs_normal(main_wf: WorkflowBuilder, tool: CommandToolBuilder,
     ### TINPUTS FED VIA STATIC VALUES ###
     # identify tinputs which have a single static value as source & migrate the source to tool default
     _migrate_single_statics_to_defaults(valid_tinput_ids, collector, tool)
-    _prune_sources(main_wf, tool.id(), valid_tinput_ids)
+    _do_simplify_sources(main_wf, tool.id(), valid_tinput_ids)
 
     ### TINPUTS NOT FED IN WORKFLOW BUT REFER TO VALID TINPUTS ###
     # add tinputs which reference a previously validated tinput
@@ -91,8 +94,14 @@ def _get_step_referenced_tinputs(collector: TaskIOCollector) -> set[str]:
     filtered_tinputs: set[str] = set()
     
     for tinput_id, history in collector.input_register.items():
+        # RULE 0: (edge case) if only has single placeholder source, ignore
+        if len(history.sources) == 1 and len(history.placeholder_sources) == 1:
+            continue
+        # RULE 0.1: scattered tool inputs are always kept
+        elif not history.is_optional:  
+            filtered_tinputs.add(tinput_id)
         # RULE 1: mandatory tool inputs are always kept
-        if not history.is_optional:  
+        elif tinput_id in collector.scatter_targets:  
             filtered_tinputs.add(tinput_id)
         # RULE 2: tool inputs which are fed by mandatory types are kept
         elif len(history.mandatory_input_sources) >= 1:
@@ -191,26 +200,26 @@ def _get_tinput_reference_tinputs(tool: CommandToolBuilder, valid_tinput_ids: se
                 break
     return extra_tinput_ids
 
-def _prune_sources(
+def _do_simplify_sources(
     local_wf: WorkflowBuilder, 
     tool_id: str, 
     valid_tinput_ids: set[str],
     ) -> None:
     for step in local_wf.step_nodes.values():
         if isinstance(step.tool, WorkflowBuilder):
-            _prune_sources(step.tool, tool_id, valid_tinput_ids)
+            _do_simplify_sources(step.tool, tool_id, valid_tinput_ids)
         elif isinstance(step.tool, CommandToolBuilder) and step.tool.id() == tool_id:
-            _do_prune_tool_sources(step, valid_tinput_ids)
+            _do_simplify_tool_sources(step, valid_tinput_ids)
         else:
             continue
 
-def _do_prune_tool_sources(step: StepNode, valid_tinput_ids: set[str]) -> None:
+def _do_simplify_tool_sources(step: StepNode, valid_tinput_ids: set[str]) -> None:
     # remove sources which are not needed
     invalid_sources = set(step.sources.keys()) - valid_tinput_ids
     for tinput_id in invalid_sources:
         del step.sources[tinput_id]
 
-def _prune_tool(
+def _do_simplify_tool(
     local_wf: WorkflowBuilder, 
     tool_id: str, 
     valid_tinput_ids: set[str],
@@ -218,15 +227,15 @@ def _prune_tool(
     ) -> None:
     for step in local_wf.step_nodes.values():
         if isinstance(step.tool, WorkflowBuilder):
-            _prune_tool(step.tool, tool_id, valid_tinput_ids, valid_toutput_ids)
+            _do_simplify_tool(step.tool, tool_id, valid_tinput_ids, valid_toutput_ids)
         elif isinstance(step.tool, CommandToolBuilder) and step.tool.id() == tool_id:
-            _do_prune_tool_inputs(step.tool, valid_tinput_ids)
-            _do_prune_tool_arguments(step.tool, valid_tinput_ids)
-            _do_prune_tool_outputs(step.tool, valid_toutput_ids)
+            _do_simplify_tool_inputs(step.tool, valid_tinput_ids)
+            _do_simplify_tool_arguments(step.tool, valid_tinput_ids)
+            _do_simplify_tool_outputs(step.tool, valid_toutput_ids)
         else:
             continue
 
-def _do_prune_tool_inputs(tool: CommandToolBuilder, valid_tinput_ids: set[str]) -> None:
+def _do_simplify_tool_inputs(tool: CommandToolBuilder, valid_tinput_ids: set[str]) -> None:
     # early exit
     if not tool._inputs:
         return 
@@ -239,7 +248,7 @@ def _do_prune_tool_inputs(tool: CommandToolBuilder, valid_tinput_ids: set[str]) 
     for i in sorted(items_to_delete, reverse=True):
         del tool._inputs[i]     # type: ignore
 
-def _do_prune_tool_arguments(tool: CommandToolBuilder, valid_tinput_ids: set[str]) -> None:
+def _do_simplify_tool_arguments(tool: CommandToolBuilder, valid_tinput_ids: set[str]) -> None:
     """
     S1 ---
     [DLTE] arg: -p
@@ -284,7 +293,7 @@ def _do_prune_tool_arguments(tool: CommandToolBuilder, valid_tinput_ids: set[str
     for idx in sorted(items_to_delete, reverse=True):
         del tool._arguments[idx]     # type: ignore
     
-def _do_prune_tool_outputs(tool: CommandToolBuilder, valid_toutput_ids: set[str]) -> None:
+def _do_simplify_tool_outputs(tool: CommandToolBuilder, valid_toutput_ids: set[str]) -> None:
     # early exit
     if not tool._outputs:
         return 
@@ -295,7 +304,7 @@ def _do_prune_tool_outputs(tool: CommandToolBuilder, valid_toutput_ids: set[str]
             items_to_delete.append(i)
     
     for i in sorted(items_to_delete, reverse=True):
-        del tool._inputs[i]     # type: ignore
+        del tool._outputs[i]     # type: ignore
 
 def _has_invalid_input_ref(targ: ToolArgument, tool: CommandToolBuilder, valid_tinput_ids: set[str]) -> bool:
     refs = trace.trace_entities(targ, tool)

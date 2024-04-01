@@ -8,7 +8,7 @@ from __future__ import annotations
 from enum import Enum
 
 from .variables import VariableManager
-from .variables import VariableType
+from janis_core.translations.nextflow.model import VariableType
 from .variables import Variable
 
 from copy import deepcopy
@@ -572,7 +572,7 @@ class Unwrapper:
                 expr = self.unwrap(basetype)
 
         # tinputs which had var available in the current scope
-        elif var.vtype in [VariableType.TASK_INPUT, VariableType.PARAM, VariableType.LOCAL]:
+        elif var.vtype in [VariableType.INPUT, VariableType.PARAM, VariableType.LOCAL]:
             expr = var.value
 
         # tinputs which have static value

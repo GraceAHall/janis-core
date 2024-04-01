@@ -66,7 +66,6 @@ inputs:
       position: 11
   is_paired_end:
     type: boolean
-    default: True
   fastq2:
     type: File?
     inputBinding:

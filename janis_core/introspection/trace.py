@@ -4,47 +4,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 from collections import defaultdict
 
-
+from janis_core.workflow.workflow import StepNode
 from janis_core.graph.steptaginput import Edge, StepTagInput
 from janis_core.operators.operator import IndexOperator, Operator
 from janis_core.types import Filename, DataType, Stdout
 
-from janis_core.operators import SingleValueOperator, TwoValueOperator
-
-# from janis_core.operators.logical import (
-#     IsDefined,
-#     If,
-#     AssertNotNull,
-#     FloorOperator,
-#     CeilOperator,
-#     RoundOperator,
-#     GroupOperator,
-# )
-
-# from janis_core.operators.standard import (
-#     ReadContents,
-#     ReadJsonOperator,
-#     JoinOperator,
-#     BasenameOperator,
-#     NamerootOperator,
-#     NameextOperator,
-#     TransposeOperator,
-#     LengthOperator,
-#     RangeOperator,
-#     FlattenOperator,
-#     ApplyPrefixOperator,
-#     FileSizeOperator,
-#     FirstOperator,
-#     FilterNullOperator,
-#     ReplaceOperator,
-# )
-from janis_core.operators.operator import (
-    IndexOperator,
-    # AsStringOperator,
-    # AsBoolOperator,
-    # AsIntOperator,
-    # AsFloatOperator,
-)
+from janis_core.operators.operator import IndexOperator
 from janis_core.operators.selectors import (
     InputNodeSelector, 
     StepOutputSelector,
@@ -59,7 +24,7 @@ from janis_core.operators.selectors import (
 )
 from janis_core.operators.stringformatter import StringFormatter
 from janis_core.workflow.workflow import InputNode
-from janis_core import ToolInput, TInput, ToolArgument, ToolOutput, Tool, CommandTool, CommandToolBuilder, CodeTool
+from janis_core import ToolInput, TInput, ToolArgument, ToolOutput, Tool, CommandTool, CommandToolBuilder, CodeTool, WorkflowBuilder
 from janis_core import translation_utils as utils
 
 
@@ -76,6 +41,11 @@ def trace_entity_counts(entity: Any, tool: Optional[Tool]=None) -> dict[str, int
         ename = e.__class__.__name__
         counter[ename] += 1
     return counter
+
+def trace_source_nodes(entity: Any, wf: WorkflowBuilder) -> list[InputNode | StepNode]:
+    tracer = SourceNodeTracer(wf)
+    tracer.trace(entity)
+    return tracer.sources
 
 def trace_source_datatype(entity: Any, tool: Optional[Tool]=None) -> Optional[DataType]:
     tracer = SourceDatatypeTracer(tool)
@@ -122,7 +92,7 @@ def trace_referenced_variables(entity: Any, tool: Optional[Tool]=None) -> set[st
 
 class Tracer(ABC):
     
-    def __init__(self, tool: Optional[Tool]=None):
+    def __init__(self, tool: Optional[CommandToolBuilder | WorkflowBuilder]=None):
         self.tool = tool
         # self.single_arg_trace_types = {
         #     IsDefined,
@@ -336,6 +306,46 @@ class CompleteEntityTracer(Tracer):
         self.entities.append(entity)
         self.do_trace(entity)
 
+
+
+class SourceNodeTracer(Tracer):
+
+    def __init__(self, wf: WorkflowBuilder):
+        super().__init__(wf)
+        self.sources: list[InputNode | StepNode] = []
+    
+    def trace(self, entity: Any) -> None:
+        ### CLASS SPECIFIC ###
+        # reached a leaf node (a data source)
+        if self.have_reached_source(entity):
+            self.handle_source(entity)
+            return 
+
+        # edge case: IndexOperator, where the target is the source
+        elif isinstance(entity, IndexOperator):
+            target: Any = entity.args[0]  # type: ignore
+            if self.have_reached_source(target):
+                self.handle_source(target)
+                return 
+        
+        ### CONTINUE TRACING ###
+        self.do_trace(entity)
+
+    def have_reached_source(self, entity: Any) -> bool:
+        if isinstance(entity, InputNodeSelector) or isinstance(entity, StepOutputSelector):
+            return True
+        return False
+
+    def handle_source(self, entity: InputNodeSelector | StepOutputSelector) -> None:
+        # reached an InputNodeSelector: get InputNode
+        if isinstance(entity, InputNodeSelector):
+            self.sources.append(entity.input_node)
+        # reached a StepOutputSelector: get StepNode
+        elif isinstance(entity, StepOutputSelector):
+            self.sources.append(entity.node)
+        else:
+            raise RuntimeError
+        
 
 
 class SourceDatatypeTracer(Tracer):

@@ -266,9 +266,7 @@ class GalaxyToolFactory:
             self.inputs.add(param)
             
             # modify command to replace script with param
-            # print(self.gxtool.command)
             self.replace_script_in_command(match, param)
-            # print(self.gxtool.command)
 
     def parse_script(self, match: re.Match[str]) -> XMLScript:
         filename = match.group(1)

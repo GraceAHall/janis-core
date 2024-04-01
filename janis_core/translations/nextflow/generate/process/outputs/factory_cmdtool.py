@@ -19,10 +19,10 @@ from janis_core import (
 )
 from janis_core import translation_utils as utils
 from janis_core.translation_utils import DTypeType
-from janis_core.translations.common import trace
+from janis_core.introspection import trace
 
 from .... import task_inputs
-from ....task_inputs import TaskInputType
+from janis_core.translations.nextflow.model import VariableType
 from ....unwrap import unwrap_expression
 from ....variables import VariableManager
 
@@ -132,8 +132,8 @@ class CmdtoolProcessOutputFactory:
             # ToolInput is not Filename type (direct reference)
             else:
                 # TInput with static value for process
-                task_input = task_inputs.get(self.tool.id(), tinput)
-                if task_input.ti_type == TaskInputType.STATIC:
+                task_input = task_inputs.get(self.tool.id(), tinput.id())
+                if task_input.vtype == VariableType.STATIC:
                     return FmtType.STATIC
                 # TInput which is directly referenced by variable
                 else:

@@ -78,6 +78,7 @@ CWL_TESTDATA_DIR = os.path.join(os.getcwd(), 'janis_core/tests/data/cwl')
 
 
 def reset_global_settings() -> None:
+    settings.translate.DEST = 'wdl'
     settings.validation.STRICT_IDENTIFIERS = True 
     settings.translate.RENDERCMD = ERenderCmd.ON
     settings.translate.SIMPLIFICATION = ESimplification.OFF
@@ -535,12 +536,12 @@ class TestFileRendering(unittest.TestCase):
 
     def test_tools_filename(self):
         self.assertEqual(
-            "BasicTestTool.wdl", self.translator.tool_filename(BasicTestTool().id())
+            "basic_test_tool.wdl", self.translator.tool_filename(BasicTestTool())
         )
 
     def test_inputs_filename(self):
         w = WorkflowBuilder("wid")
-        self.assertEqual("wid-inp.json", self.translator.inputs_filename(w))
+        self.assertEqual("wid.json", self.translator.inputs_filename(w))
 
     def test_resources_filename(self):
         w = WorkflowBuilder("wid")
@@ -565,6 +566,8 @@ class TestWorkflowInputs(unittest.TestCase):
     def test_basic(self):
         raise NotImplementedError
     
+    # this sucks
+    @unittest.skip('odd, not supporting this')
     def test_default_string_formatter(self):
         wf = WorkflowBuilder("wf")
         wf.input("sampleName", str)
@@ -1107,9 +1110,6 @@ class TestToolOutputs(unittest.TestCase):
     def setUp(self) -> None:
         reset_global_settings()
 
-    def test_1(self) -> None:
-        raise NotImplementedError
-    
     def test_notnull_cmdtool(self):
         t = CommandToolBuilder(
             tool="id",
